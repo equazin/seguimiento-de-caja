@@ -1,7 +1,8 @@
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, ArrowLeftRight, Wallet, BarChart3,
-  Settings, ChevronLeft, ChevronRight, Building2
+  Settings, ChevronLeft, ChevronRight, Building2,
+  ShoppingCart, Truck, Package, FileText,
 } from 'lucide-react'
 import { cn } from '@/lib/formatters'
 
@@ -14,6 +15,10 @@ const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/movimientos', label: 'Movimientos', icon: ArrowLeftRight },
   { to: '/cuentas', label: 'Cuentas', icon: Wallet },
+  { to: '/ventas', label: 'Ventas', icon: ShoppingCart },
+  { to: '/compras', label: 'Compras', icon: Truck },
+  { to: '/catalogo', label: 'Catálogo', icon: Package },
+  { to: '/fiscal', label: 'Fiscal', icon: FileText },
   { to: '/reportes', label: 'Reportes', icon: BarChart3 },
   { to: '/configuracion', label: 'Configuración', icon: Settings },
 ]

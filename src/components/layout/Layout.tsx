@@ -12,6 +12,10 @@ const TITULOS: Record<string, { titulo: string; subtitulo?: string }> = {
   '/': { titulo: 'Dashboard', subtitulo: 'Resumen financiero del mes' },
   '/movimientos': { titulo: 'Movimientos', subtitulo: 'Gestión de ingresos y egresos' },
   '/cuentas': { titulo: 'Cuentas', subtitulo: 'Saldos y transferencias' },
+  '/ventas': { titulo: 'Ventas', subtitulo: 'Documentos comerciales emitidos' },
+  '/compras': { titulo: 'Compras', subtitulo: 'Documentos recibidos de proveedores' },
+  '/catalogo': { titulo: 'Catálogo', subtitulo: 'Clientes, proveedores y productos' },
+  '/fiscal': { titulo: 'Fiscal', subtitulo: 'Empresa, puntos de venta y ARCA/AFIP' },
   '/reportes': { titulo: 'Reportes', subtitulo: 'Análisis y exportación' },
   '/configuracion': { titulo: 'Configuración', subtitulo: 'Ajustes del sistema' },
 }

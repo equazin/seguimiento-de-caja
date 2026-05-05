@@ -7,24 +7,43 @@ import { Movimientos } from '@/pages/Movimientos'
 import { Cuentas } from '@/pages/Cuentas'
 import { Reportes } from '@/pages/Reportes'
 import { Configuracion } from '@/pages/Configuracion'
+import { Ventas } from '@/pages/Ventas'
+import { Compras } from '@/pages/Compras'
+import { Catalogo } from '@/pages/Catalogo'
+import { Fiscal } from '@/pages/Fiscal'
 import { MovimientoModal } from '@/components/movimientos/MovimientoModal'
+import { LoginPage } from '@/components/auth/LoginPage'
+import { AuthProvider, useAuth } from '@/lib/auth'
 import { seedDatosIniciales } from '@/lib/seed'
 import type { Movimiento } from '@/db/schema'
 
-export default function App() {
+function AppShell() {
+  const { session, loading } = useAuth()
   const [modalOpen, setModalOpen] = useState(false)
   const [movimientoEditar, setMovimientoEditar] = useState<Movimiento | null>(null)
   const [seeded, setSeeded] = useState(false)
   const [seedError, setSeedError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (!session) {
+      setSeeded(false)
+      setSeedError(null)
+      return
+    }
+    let cancelled = false
     seedDatosIniciales()
-      .then(() => setSeeded(true))
+      .then(() => {
+        if (!cancelled) setSeeded(true)
+      })
       .catch(error => {
+        if (cancelled) return
         console.error('Error inicializando datos', error)
         setSeedError(error instanceof Error ? error.message : 'No se pudo inicializar la base de datos')
       })
-  }, [])
+    return () => {
+      cancelled = true
+    }
+  }, [session?.user.id])
 
   const handleNuevoMovimiento = () => {
     setMovimientoEditar(null)
@@ -41,6 +60,21 @@ export default function App() {
     setMovimientoEditar(null)
   }
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground text-sm">Cargando…</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!session) {
+    return <LoginPage />
+  }
+
   if (seedError) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
@@ -48,7 +82,7 @@ export default function App() {
           <p className="text-danger text-sm font-semibold">No se pudo conectar la base de datos</p>
           <h1 className="text-xl font-bold text-white">Falta preparar Supabase</h1>
           <p className="text-sm text-muted-foreground">
-            Ejecutá el SQL de <span className="font-mono text-white">supabase/schema.sql</span> en Supabase y recargá la app.
+            Ejecutá el SQL de <span className="font-mono text-white">supabase/schema.sql</span> y las migraciones en <span className="font-mono text-white">supabase/migrations/</span> y recargá la app.
           </p>
           <p className="text-xs text-muted-foreground break-words">{seedError}</p>
         </div>
@@ -61,7 +95,7 @@ export default function App() {
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-muted-foreground text-sm">Iniciando Bartez Caja...</p>
+          <p className="text-muted-foreground text-sm">Iniciando Bartez Caja…</p>
         </div>
       </div>
     )
@@ -95,6 +129,10 @@ export default function App() {
             }
           />
           <Route path="/cuentas" element={<Cuentas />} />
+          <Route path="/ventas" element={<Ventas />} />
+          <Route path="/compras" element={<Compras />} />
+          <Route path="/catalogo" element={<Catalogo />} />
+          <Route path="/fiscal" element={<Fiscal />} />
           <Route path="/reportes" element={<Reportes />} />
           <Route path="/configuracion" element={<Configuracion />} />
         </Route>
@@ -105,5 +143,13 @@ export default function App() {
         movimiento={movimientoEditar}
       />
     </BrowserRouter>
+  )
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppShell />
+    </AuthProvider>
   )
 }
