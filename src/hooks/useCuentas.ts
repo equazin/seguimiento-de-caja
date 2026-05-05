@@ -1,36 +1,56 @@
-import { useLiveQuery } from 'dexie-react-hooks'
-import { db } from '@/db/schema'
+import { supabase } from '@/db/schema'
 import type { Cuenta } from '@/db/schema'
 import { getSaldoCuenta } from '@/db/queries'
+import { notifyDataChanged, useSupabaseQuery } from '@/hooks/useSupabaseQuery'
 import { v4 as uuidv4 } from 'uuid'
 
 export function useCuentas() {
-  return useLiveQuery(() => db.cuentas.filter(c => c.activa === true).toArray())
+  return useSupabaseQuery(async () => {
+    const { data, error } = await supabase
+      .from('cuentas')
+      .select('*')
+      .eq('activa', true)
+      .order('nombre')
+    if (error) throw error
+    return data ?? []
+  }, [], ['cuentas'])
 }
 
 export function useCuentasConSaldo() {
-  return useLiveQuery(async () => {
-    const cuentas = await db.cuentas.filter(c => c.activa === true).toArray()
+  return useSupabaseQuery(async () => {
+    const { data: cuentas, error } = await supabase
+      .from('cuentas')
+      .select('*')
+      .eq('activa', true)
+      .order('nombre')
+    if (error) throw error
+
     const cuentasConSaldo = await Promise.all(
-      cuentas.map(async cuenta => ({
+      (cuentas ?? []).map(async cuenta => ({
         ...cuenta,
         saldo_actual: await getSaldoCuenta(cuenta.id),
       }))
     )
     return cuentasConSaldo
-  })
+  }, [], ['cuentas', 'movimientos'])
 }
 
 export async function crearCuenta(data: Omit<Cuenta, 'id'>) {
-  return db.cuentas.add({ ...data, id: uuidv4() })
+  const { error } = await supabase.from('cuentas').insert({ ...data, id: uuidv4() })
+  if (error) throw error
+  notifyDataChanged()
 }
 
-export async function actualizarCuenta(id: string, data: Partial<Cuenta>) {
-  return db.cuentas.update(id, data)
+export async function actualizarCuenta(id: string, data: Partial<Omit<Cuenta, 'id'>>) {
+  const { error } = await supabase.from('cuentas').update(data).eq('id', id)
+  if (error) throw error
+  notifyDataChanged()
 }
 
 export async function desactivarCuenta(id: string) {
-  return db.cuentas.update(id, { activa: false })
+  const { error } = await supabase.from('cuentas').update({ activa: false }).eq('id', id)
+  if (error) throw error
+  notifyDataChanged()
 }
 
 export async function transferirEntreCuentas(
@@ -41,7 +61,7 @@ export async function transferirEntreCuentas(
   fecha: string
 ) {
   const now = new Date().toISOString()
-  await db.movimientos.bulkAdd([
+  const { error } = await supabase.from('movimientos').insert([
     {
       id: uuidv4(),
       fecha,
@@ -67,4 +87,6 @@ export async function transferirEntreCuentas(
       updated_at: now,
     },
   ])
+  if (error) throw error
+  notifyDataChanged()
 }

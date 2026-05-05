@@ -1,39 +1,60 @@
-import { db } from './schema'
-import type { Movimiento, Categoria, Cuenta } from './schema'
+import { supabase } from './supabase'
+import type { Categoria, Configuracion, Cuenta, Movimiento } from './supabase'
+import { notifyDataChanged } from '@/hooks/useSupabaseQuery'
+
+async function clearAllTables() {
+  const movimientos = await supabase.from('movimientos').delete().not('id', 'is', null)
+  if (movimientos.error) throw movimientos.error
+
+  const categorias = await supabase.from('categorias').delete().not('id', 'is', null)
+  if (categorias.error) throw categorias.error
+
+  const cuentas = await supabase.from('cuentas').delete().not('id', 'is', null)
+  if (cuentas.error) throw cuentas.error
+
+  const configuracion = await supabase.from('configuracion').delete().not('id', 'is', null)
+  if (configuracion.error) throw configuracion.error
+}
 
 export async function getSaldoCuenta(cuentaId: string): Promise<number> {
-  const cuenta = await db.cuentas.get(cuentaId)
+  const { data: cuenta } = await supabase
+    .from('cuentas')
+    .select('saldo_inicial')
+    .eq('id', cuentaId)
+    .maybeSingle()
+
   if (!cuenta) return 0
 
-  const movimientos = await db.movimientos
-    .where('cuenta_id')
-    .equals(cuentaId)
-    .toArray()
+  const { data: movimientos } = await supabase
+    .from('movimientos')
+    .select('tipo, monto_ars')
+    .eq('cuenta_id', cuentaId)
 
-  const totalIngresos = movimientos
-    .filter(m => m.tipo === 'ingreso')
-    .reduce((sum, m) => sum + m.monto_ars, 0)
+  if (!movimientos) return cuenta.saldo_inicial
 
-  const totalEgresos = movimientos
-    .filter(m => m.tipo === 'egreso')
-    .reduce((sum, m) => sum + m.monto_ars, 0)
-
+  const totalIngresos = movimientos.filter(m => m.tipo === 'ingreso').reduce((s, m) => s + m.monto_ars, 0)
+  const totalEgresos = movimientos.filter(m => m.tipo === 'egreso').reduce((s, m) => s + m.monto_ars, 0)
   return cuenta.saldo_inicial + totalIngresos - totalEgresos
 }
 
 export async function getSaldoTotalARS(): Promise<number> {
-  const cuentas = await db.cuentas.where('activa').equals(1).toArray()
+  const { data: cuentas } = await supabase.from('cuentas').select('id').eq('activa', true)
+  if (!cuentas) return 0
   const saldos = await Promise.all(cuentas.map(c => getSaldoCuenta(c.id)))
-  return saldos.reduce((sum, s) => sum + s, 0)
+  return saldos.reduce((s, v) => s + v, 0)
 }
 
 export async function getMovimientosByMes(anio: number, mes: number): Promise<Movimiento[]> {
   const inicio = `${anio}-${String(mes).padStart(2, '0')}-01`
   const fin = `${anio}-${String(mes).padStart(2, '0')}-31`
-  return db.movimientos
-    .where('fecha')
-    .between(inicio, fin, true, true)
-    .toArray()
+  const { data } = await supabase
+    .from('movimientos')
+    .select('*')
+    .gte('fecha', inicio)
+    .lte('fecha', fin)
+    .order('fecha', { ascending: false })
+    .order('created_at', { ascending: false })
+  return data ?? []
 }
 
 export async function getResumenMensual(anio: number, mes: number) {
@@ -45,18 +66,16 @@ export async function getResumenMensual(anio: number, mes: number) {
 
 export async function getEgresosPorCategoria(anio: number, mes: number) {
   const movimientos = await getMovimientosByMes(anio, mes)
-  const categorias = await db.categorias.toArray()
+  const { data: categorias } = await supabase.from('categorias').select('*')
 
   const mapa = new Map<string, number>()
-  movimientos
-    .filter(m => m.tipo === 'egreso')
-    .forEach(m => {
-      const actual = mapa.get(m.categoria_id) ?? 0
-      mapa.set(m.categoria_id, actual + m.monto_ars)
-    })
+  movimientos.filter(m => m.tipo === 'egreso').forEach(m => {
+    if (!m.categoria_id) return
+    mapa.set(m.categoria_id, (mapa.get(m.categoria_id) ?? 0) + m.monto_ars)
+  })
 
   return Array.from(mapa.entries()).map(([catId, total]) => {
-    const cat = categorias.find(c => c.id === catId)
+    const cat = (categorias ?? []).find(c => c.id === catId)
     return {
       categoria: cat?.nombre ?? 'Sin categoría',
       color: cat?.color ?? '#6366f1',
@@ -69,7 +88,6 @@ export async function getEgresosPorCategoria(anio: number, mes: number) {
 export async function getIngresosEgresosPorMes(meses: number = 6) {
   const resultado = []
   const hoy = new Date()
-
   for (let i = meses - 1; i >= 0; i--) {
     const fecha = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1)
     const anio = fecha.getFullYear()
@@ -82,57 +100,66 @@ export async function getIngresosEgresosPorMes(meses: number = 6) {
       egresos: resumen.egresos,
     })
   }
-
   return resultado
 }
 
 export async function getContactosUsados(): Promise<string[]> {
-  const movimientos = await db.movimientos.toArray()
-  const contactos = movimientos
-    .map(m => m.contacto)
-    .filter((c): c is string => Boolean(c))
+  const { data } = await supabase.from('movimientos').select('contacto').not('contacto', 'is', null)
+  const contactos = (data ?? []).map(m => m.contacto).filter(Boolean) as string[]
   return [...new Set(contactos)].sort()
 }
 
 export async function getConfiguracion(clave: string): Promise<string | null> {
-  const config = await db.configuracion.where('clave').equals(clave).first()
-  return config?.valor ?? null
+  const { data } = await supabase.from('configuracion').select('valor').eq('clave', clave).maybeSingle()
+  return data?.valor ?? null
 }
 
 export async function setConfiguracion(clave: string, valor: string): Promise<void> {
-  const existing = await db.configuracion.where('clave').equals(clave).first()
-  if (existing) {
-    await db.configuracion.update(existing.id, { valor })
-  } else {
-    await db.configuracion.add({ id: crypto.randomUUID(), clave, valor })
-  }
+  const { error } = await supabase.from('configuracion').upsert({ clave, valor }, { onConflict: 'clave' })
+  if (error) throw error
+  notifyDataChanged()
 }
 
 export async function exportarDB() {
-  const [movimientos, categorias, cuentas, presupuestos, configuracion] = await Promise.all([
-    db.movimientos.toArray(),
-    db.categorias.toArray(),
-    db.cuentas.toArray(),
-    db.presupuestos.toArray(),
-    db.configuracion.toArray(),
+  const [movimientos, categorias, cuentas, configuracion] = await Promise.all([
+    supabase.from('movimientos').select('*'),
+    supabase.from('categorias').select('*'),
+    supabase.from('cuentas').select('*'),
+    supabase.from('configuracion').select('*'),
   ])
-  return { movimientos, categorias, cuentas, presupuestos, configuracion, exportado_en: new Date().toISOString() }
+  return {
+    movimientos: movimientos.data ?? [],
+    categorias: categorias.data ?? [],
+    cuentas: cuentas.data ?? [],
+    configuracion: configuracion.data ?? [],
+    exportado_en: new Date().toISOString(),
+  }
 }
 
-export async function importarDB(data: Awaited<ReturnType<typeof exportarDB>>) {
-  await db.transaction('rw', [db.movimientos, db.categorias, db.cuentas, db.presupuestos, db.configuracion], async () => {
-    await db.movimientos.clear()
-    await db.categorias.clear()
-    await db.cuentas.clear()
-    await db.presupuestos.clear()
-    await db.configuracion.clear()
+interface BackupData {
+  movimientos: Movimiento[]
+  categorias: Categoria[]
+  cuentas: Cuenta[]
+  configuracion?: Configuracion[]
+}
 
-    await db.movimientos.bulkAdd(data.movimientos)
-    await db.categorias.bulkAdd(data.categorias)
-    await db.cuentas.bulkAdd(data.cuentas)
-    await db.presupuestos.bulkAdd(data.presupuestos)
-    await db.configuracion.bulkAdd(data.configuracion)
-  })
+export async function importarDB(data: BackupData) {
+  await clearAllTables()
+
+  const results = await Promise.all([
+    data.categorias?.length ? supabase.from('categorias').insert(data.categorias) : Promise.resolve({ error: null }),
+    data.cuentas?.length ? supabase.from('cuentas').insert(data.cuentas) : Promise.resolve({ error: null }),
+    data.movimientos?.length ? supabase.from('movimientos').insert(data.movimientos) : Promise.resolve({ error: null }),
+    data.configuracion?.length ? supabase.from('configuracion').insert(data.configuracion) : Promise.resolve({ error: null }),
+  ])
+  const error = results.find(result => result.error)?.error
+  if (error) throw error
+  notifyDataChanged()
+}
+
+export async function resetearDB() {
+  await clearAllTables()
+  notifyDataChanged()
 }
 
 export async function getSaldoAcumuladoUltimos30Dias() {
@@ -140,32 +167,25 @@ export async function getSaldoAcumuladoUltimos30Dias() {
   const hace30 = new Date(hoy)
   hace30.setDate(hace30.getDate() - 30)
 
-  const todos = await db.movimientos.toArray()
-  const saldoInicial = await getSaldoTotalARS()
+  const { data: todos } = await supabase.from('movimientos').select('fecha, tipo, monto_ars')
+  const saldoTotal = await getSaldoTotalARS()
 
   const resultado: { fecha: string; saldo: number }[] = []
-  let saldoAcum = saldoInicial
+  let saldoAcum = saldoTotal
 
   for (let i = 30; i >= 0; i--) {
     const fecha = new Date(hoy)
     fecha.setDate(fecha.getDate() - i)
     const fechaStr = fecha.toISOString().split('T')[0]
-
-    const del_dia = todos.filter(m => m.fecha === fechaStr)
-    const ingresos_dia = del_dia.filter(m => m.tipo === 'ingreso').reduce((s, m) => s + m.monto_ars, 0)
-    const egresos_dia = del_dia.filter(m => m.tipo === 'egreso').reduce((s, m) => s + m.monto_ars, 0)
-
-    if (i === 30) {
-      saldoAcum = saldoInicial - ingresos_dia + egresos_dia
-    } else {
-      saldoAcum = saldoAcum + ingresos_dia - egresos_dia
-    }
-
+    const del_dia = (todos ?? []).filter(m => m.fecha === fechaStr)
+    const ing = del_dia.filter(m => m.tipo === 'ingreso').reduce((s, m) => s + m.monto_ars, 0)
+    const egr = del_dia.filter(m => m.tipo === 'egreso').reduce((s, m) => s + m.monto_ars, 0)
+    if (i === 30) saldoAcum = saldoTotal - ing + egr
+    else saldoAcum = saldoAcum + ing - egr
     resultado.push({
       fecha: fecha.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }),
       saldo: saldoAcum,
     })
   }
-
   return resultado
 }

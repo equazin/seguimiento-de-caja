@@ -1,9 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Download, Upload, Trash2, RefreshCw, Plus, Edit2, X, Check } from 'lucide-react'
-import { useLiveQuery } from 'dexie-react-hooks'
-import { db } from '@/db/schema'
 import { useCategorias, crearCategoria, actualizarCategoria, eliminarCategoria } from '@/hooks/useCategorias'
-import { getConfiguracion, setConfiguracion, exportarDB, importarDB } from '@/db/queries'
+import { getConfiguracion, setConfiguracion, exportarDB, importarDB, resetearDB as resetearDatosRemotos } from '@/db/queries'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Input, Select } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
@@ -90,8 +88,7 @@ export function Configuracion() {
 
   const resetearDB = async () => {
     try {
-      await db.delete()
-      await db.open()
+      await resetearDatosRemotos()
       toast.success('Base de datos reseteada. Recargá la página.')
       setTimeout(() => window.location.reload(), 1500)
     } catch {

@@ -1,4 +1,3 @@
-import { useLiveQuery } from 'dexie-react-hooks'
 import {
   getResumenMensual,
   getSaldoTotalARS,
@@ -6,9 +5,10 @@ import {
   getIngresosEgresosPorMes,
   getSaldoAcumuladoUltimos30Dias,
 } from '@/db/queries'
+import { useSupabaseQuery } from '@/hooks/useSupabaseQuery'
 
 export function useDashboard() {
-  return useLiveQuery(async () => {
+  return useSupabaseQuery(async () => {
     const hoy = new Date()
     const anio = hoy.getFullYear()
     const mes = hoy.getMonth() + 1
@@ -28,5 +28,5 @@ export function useDashboard() {
       chartMeses,
       chartSaldo,
     }
-  })
+  }, [], ['movimientos', 'cuentas', 'categorias'])
 }

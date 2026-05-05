@@ -31,6 +31,8 @@ jobs:
         env:
           GITHUB_PAGES: "true"
           NODE_OPTIONS: "--max-old-space-size=4096"
+          VITE_SUPABASE_URL: "https://blcyvatfmspdpcbwzwwu.supabase.co"
+          VITE_SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJsY3l2YXRmbXNwZHBjYnd6d3d1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5ODgzMDIsImV4cCI6MjA5MzU2NDMwMn0.na7JMtYIDQiXkRfT9fTqc_CTNFpsTWUdJ74q2Oj5_Sk"
 
       - uses: actions/upload-pages-artifact@v3
         with:

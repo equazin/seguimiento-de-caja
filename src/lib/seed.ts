@@ -1,18 +1,33 @@
-import { db } from '@/db/schema'
-import { CATEGORIAS_DEFAULT, CUENTAS_DEFAULT } from './constants'
-import { v4 as uuidv4 } from 'uuid'
+import { supabase } from '@/db/schema'
+import { INITIAL_BACKUP } from './initialBackup'
+import { notifyDataChanged } from '@/hooks/useSupabaseQuery'
 
 export async function seedDatosIniciales() {
-  const catCount = await db.categorias.count()
-  if (catCount > 0) return // Ya fue seeded
+  const { count, error: countError } = await supabase
+    .from('categorias')
+    .select('id', { count: 'exact', head: true })
+  if (countError) throw countError
+  if ((count ?? 0) > 0) return // Ya fue seeded
 
-  await db.categorias.bulkAdd(CATEGORIAS_DEFAULT)
-  await db.cuentas.bulkAdd(CUENTAS_DEFAULT)
+  const { error: categoriasError } = await supabase
+    .from('categorias')
+    .upsert(INITIAL_BACKUP.categorias, { onConflict: 'id' })
+  if (categoriasError) throw categoriasError
 
-  // Config inicial
-  await db.configuracion.bulkAdd([
-    { id: uuidv4(), clave: 'nombre_negocio', valor: 'Bartez Tecnología' },
-    { id: uuidv4(), clave: 'moneda_base', valor: 'ARS' },
-    { id: uuidv4(), clave: 'cotizacion_usd', valor: '1280' },
-  ])
+  const { error: cuentasError } = await supabase
+    .from('cuentas')
+    .upsert(INITIAL_BACKUP.cuentas, { onConflict: 'id' })
+  if (cuentasError) throw cuentasError
+
+  const { error: configError } = await supabase
+    .from('configuracion')
+    .upsert(INITIAL_BACKUP.configuracion, { onConflict: 'clave' })
+  if (configError) throw configError
+
+  const { error: movimientosError } = await supabase
+    .from('movimientos')
+    .upsert(INITIAL_BACKUP.movimientos, { onConflict: 'id' })
+  if (movimientosError) throw movimientosError
+
+  notifyDataChanged()
 }

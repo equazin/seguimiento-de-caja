@@ -17,7 +17,7 @@ export default defineConfig({
         manualChunks: {
           react: ['react', 'react-dom', 'react-router-dom'],
           recharts: ['recharts'],
-          dexie: ['dexie', 'dexie-react-hooks'],
+          supabase: ['@supabase/supabase-js'],
           xlsx: ['xlsx'],
           jspdf: ['jspdf', 'jspdf-autotable'],
           ui: ['lucide-react', 'sonner'],

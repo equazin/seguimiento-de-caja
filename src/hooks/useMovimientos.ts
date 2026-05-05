@@ -1,6 +1,6 @@
-import { useLiveQuery } from 'dexie-react-hooks'
-import { db } from '@/db/schema'
+import { supabase } from '@/db/schema'
 import type { Movimiento } from '@/db/schema'
+import { notifyDataChanged, useSupabaseQuery } from '@/hooks/useSupabaseQuery'
 import { v4 as uuidv4 } from 'uuid'
 
 export interface MovimientoFiltros {
@@ -14,28 +14,24 @@ export interface MovimientoFiltros {
 }
 
 export function useMovimientos(filtros?: MovimientoFiltros) {
-  return useLiveQuery(async () => {
-    let query = db.movimientos.orderBy('fecha').reverse()
-    let items = await query.toArray()
+  return useSupabaseQuery(async () => {
+    let query = supabase
+      .from('movimientos')
+      .select('*')
+      .order('fecha', { ascending: false })
+      .order('created_at', { ascending: false })
 
-    if (filtros?.fechaDesde) {
-      items = items.filter(m => m.fecha >= filtros.fechaDesde!)
-    }
-    if (filtros?.fechaHasta) {
-      items = items.filter(m => m.fecha <= filtros.fechaHasta!)
-    }
-    if (filtros?.tipo) {
-      items = items.filter(m => m.tipo === filtros.tipo)
-    }
-    if (filtros?.categoriaId) {
-      items = items.filter(m => m.categoria_id === filtros.categoriaId)
-    }
-    if (filtros?.cuentaId) {
-      items = items.filter(m => m.cuenta_id === filtros.cuentaId)
-    }
-    if (filtros?.metodoPago) {
-      items = items.filter(m => m.metodo_pago === filtros.metodoPago)
-    }
+    if (filtros?.fechaDesde) query = query.gte('fecha', filtros.fechaDesde)
+    if (filtros?.fechaHasta) query = query.lte('fecha', filtros.fechaHasta)
+    if (filtros?.tipo) query = query.eq('tipo', filtros.tipo)
+    if (filtros?.categoriaId) query = query.eq('categoria_id', filtros.categoriaId)
+    if (filtros?.cuentaId) query = query.eq('cuenta_id', filtros.cuentaId)
+    if (filtros?.metodoPago) query = query.eq('metodo_pago', filtros.metodoPago as Movimiento['metodo_pago'])
+
+    const { data, error } = await query
+    if (error) throw error
+
+    let items = data ?? []
     if (filtros?.contacto) {
       const busq = filtros.contacto.toLowerCase()
       items = items.filter(m =>
@@ -48,28 +44,49 @@ export function useMovimientos(filtros?: MovimientoFiltros) {
   }, [
     filtros?.fechaDesde, filtros?.fechaHasta, filtros?.tipo,
     filtros?.categoriaId, filtros?.cuentaId, filtros?.metodoPago, filtros?.contacto,
-  ])
+  ], ['movimientos'])
 }
 
 export function useUltimosMovimientos(limite: number = 10) {
-  return useLiveQuery(() =>
-    db.movimientos.orderBy('fecha').reverse().limit(limite).toArray()
-  )
+  return useSupabaseQuery(async () => {
+    const { data, error } = await supabase
+      .from('movimientos')
+      .select('*')
+      .order('fecha', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(limite)
+    if (error) throw error
+    return data ?? []
+  }, [limite], ['movimientos'])
 }
 
 export async function crearMovimiento(data: Omit<Movimiento, 'id' | 'created_at' | 'updated_at'>) {
   const now = new Date().toISOString()
-  return db.movimientos.add({ ...data, id: uuidv4(), created_at: now, updated_at: now })
+  const { error } = await supabase
+    .from('movimientos')
+    .insert({ ...data, id: uuidv4(), created_at: now, updated_at: now })
+  if (error) throw error
+  notifyDataChanged()
 }
 
-export async function actualizarMovimiento(id: string, data: Partial<Movimiento>) {
-  return db.movimientos.update(id, { ...data, updated_at: new Date().toISOString() })
+export async function actualizarMovimiento(id: string, data: Partial<Omit<Movimiento, 'id' | 'created_at' | 'updated_at'>>) {
+  const { error } = await supabase
+    .from('movimientos')
+    .update({ ...data, updated_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+  notifyDataChanged()
 }
 
 export async function eliminarMovimiento(id: string) {
-  return db.movimientos.delete(id)
+  const { error } = await supabase.from('movimientos').delete().eq('id', id)
+  if (error) throw error
+  notifyDataChanged()
 }
 
 export async function eliminarMovimientosBulk(ids: string[]) {
-  return db.movimientos.bulkDelete(ids)
+  if (!ids.length) return
+  const { error } = await supabase.from('movimientos').delete().in('id', ids)
+  if (error) throw error
+  notifyDataChanged()
 }
