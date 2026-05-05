@@ -3,7 +3,6 @@ import { Trash2, Edit2, ChevronLeft, ChevronRight, ArrowUpDown } from 'lucide-re
 import { useMovimientos, eliminarMovimiento, eliminarMovimientosBulk } from '@/hooks/useMovimientos'
 import { useCategorias } from '@/hooks/useCategorias'
 import { useCuentas } from '@/hooks/useCuentas'
-import { MovimientoModal } from '@/components/movimientos/MovimientoModal'
 import { MovimientoFilters } from '@/components/movimientos/MovimientoFilters'
 import { ConfirmDialog } from '@/components/ui/Dialog'
 import { Badge } from '@/components/ui/Badge'
@@ -21,14 +20,11 @@ type SortKey = 'fecha' | 'monto_ars' | 'descripcion'
 type SortDir = 'asc' | 'desc'
 
 interface Props {
-  modalOpen: boolean
   onModalOpen: () => void
-  onModalClose: () => void
-  movimientoEditar: Movimiento | null
   onEdit: (m: Movimiento) => void
 }
 
-export function Movimientos({ modalOpen, onModalOpen, onModalClose, movimientoEditar, onEdit }: Props) {
+export function Movimientos({ onModalOpen, onEdit }: Props) {
   const [filtros, setFiltros] = useState<MovimientoFiltros>({})
   const [pagina, setPagina] = useState(1)
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set())
@@ -294,12 +290,6 @@ export function Movimientos({ modalOpen, onModalOpen, onModalClose, movimientoEd
           )}
         </div>
       </div>
-
-      <MovimientoModal
-        open={modalOpen}
-        onClose={onModalClose}
-        movimiento={movimientoEditar}
-      />
 
       <ConfirmDialog
         open={confirmDelete !== null}

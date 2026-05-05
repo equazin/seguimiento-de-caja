@@ -1,7 +1,6 @@
-import { ArrowDownLeft, ArrowUpRight, Edit2 } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, Eye } from 'lucide-react'
 import { formatMoney, formatDate } from '@/lib/formatters'
-import type { Movimiento } from '@/db/schema'
-import type { Categoria } from '@/db/schema'
+import type { Movimiento, Categoria } from '@/db/schema'
 import { Badge } from '@/components/ui/Badge'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 
@@ -17,11 +16,11 @@ export function RecentMovimientos({ movimientos, categorias, onEdit }: Props) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Últimos movimientos</CardTitle>
+        <CardTitle>Ultimos movimientos</CardTitle>
       </CardHeader>
       <div className="space-y-1">
         {movimientos.length === 0 && (
-          <p className="text-sm text-muted-foreground text-center py-6">Sin movimientos aún</p>
+          <p className="text-sm text-muted-foreground text-center py-6">Sin movimientos aun</p>
         )}
         {movimientos.map(m => {
           const cat = catMap.get(m.categoria_id)
@@ -29,7 +28,16 @@ export function RecentMovimientos({ movimientos, categorias, onEdit }: Props) {
           return (
             <div
               key={m.id}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-surface-2 transition-colors group"
+              role="button"
+              tabIndex={0}
+              onClick={() => onEdit(m)}
+              onKeyDown={event => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  onEdit(m)
+                }
+              }}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-surface-2 transition-colors group cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary"
             >
               <div className={`p-1.5 rounded-lg ${esIngreso ? 'bg-success/15' : 'bg-danger/15'}`}>
                 {esIngreso
@@ -53,10 +61,14 @@ export function RecentMovimientos({ movimientos, categorias, onEdit }: Props) {
                   {esIngreso ? '+' : '-'}{formatMoney(m.monto_ars)}
                 </p>
                 <button
-                  onClick={() => onEdit(m)}
+                  onClick={event => {
+                    event.stopPropagation()
+                    onEdit(m)
+                  }}
                   className="opacity-0 group-hover:opacity-100 p-1 rounded text-muted-foreground hover:text-white transition-all"
+                  title="Ver detalle"
                 >
-                  <Edit2 size={12} />
+                  <Eye size={12} />
                 </button>
               </div>
             </div>

@@ -35,7 +35,6 @@ export function Dashboard({ onEditMovimiento }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard
           titulo="Saldo total"
@@ -45,14 +44,14 @@ export function Dashboard({ onEditMovimiento }: Props) {
           subtitulo="Suma de todas las cuentas"
         />
         <KPICard
-          titulo={`Ingresos — ${mesLabel}`}
+          titulo={`Ingresos - ${mesLabel}`}
           valor={data.resumenMes.ingresos}
           icono={TrendingUp}
           variante="ingreso"
           subtitulo="Mes actual"
         />
         <KPICard
-          titulo={`Egresos — ${mesLabel}`}
+          titulo={`Egresos - ${mesLabel}`}
           valor={data.resumenMes.egresos}
           icono={TrendingDown}
           variante="egreso"
@@ -67,7 +66,6 @@ export function Dashboard({ onEditMovimiento }: Props) {
         />
       </div>
 
-      {/* Cuentas mini cards */}
       {cuentas && cuentas.length > 0 && (
         <div className="flex gap-3 overflow-x-auto pb-1">
           {cuentas.map(c => (
@@ -82,7 +80,6 @@ export function Dashboard({ onEditMovimiento }: Props) {
         </div>
       )}
 
-      {/* Charts */}
       <div className="flex gap-4">
         <ChartBarMeses data={data.chartMeses} />
         <ChartDonutEgresos data={data.egresosPorCategoria} />
@@ -90,7 +87,6 @@ export function Dashboard({ onEditMovimiento }: Props) {
 
       <ChartSaldoLinea data={data.chartSaldo} />
 
-      {/* Últimos movimientos */}
       <RecentMovimientos
         movimientos={ultimos ?? []}
         categorias={categorias ?? []}

@@ -1,8 +1,9 @@
-import type { Categoria, Configuracion, Cuenta, Movimiento } from '@/db/schema'
+import type { Configuracion, Cuenta, Movimiento } from '@/db/schema'
+import { CATEGORIAS_DEFAULT } from './constants'
 
 export const INITIAL_BACKUP: {
   movimientos: Movimiento[]
-  categorias: Categoria[]
+  categorias: typeof CATEGORIAS_DEFAULT
   cuentas: Cuenta[]
   configuracion: Configuracion[]
 } = {
@@ -91,24 +92,7 @@ export const INITIAL_BACKUP: {
       updated_at: '2026-05-05T17:37:15.445Z',
     },
   ],
-  categorias: [
-    { id: 'cat-alquiler', nombre: 'Alquiler', tipo: 'egreso', color: '#06b6d4', icono: 'ðŸ ' },
-    { id: 'cat-bancarios', nombre: 'Gastos bancarios', tipo: 'egreso', color: '#6366f1', icono: 'ðŸ¦' },
-    { id: 'cat-cobro-deuda', nombre: 'Cobro de deuda', tipo: 'ingreso', color: '#3b82f6', icono: 'ðŸ’³' },
-    { id: 'cat-comisiones', nombre: 'Comisiones', tipo: 'ingreso', color: '#84cc16', icono: 'ðŸ¤' },
-    { id: 'cat-impuestos', nombre: 'Impuestos/IIBB/Tasas', tipo: 'egreso', color: '#64748b', icono: 'ðŸ›ï¸' },
-    { id: 'cat-logistica', nombre: 'LogÃ­stica/Flete', tipo: 'egreso', color: '#f97316', icono: 'ðŸšš' },
-    { id: 'cat-marketing', nombre: 'Marketing', tipo: 'egreso', color: '#14b8a6', icono: 'ðŸ“¢' },
-    { id: 'cat-mercaderia', nombre: 'Compra de mercaderÃ­a', tipo: 'egreso', color: '#ef4444', icono: 'ðŸ“¦' },
-    { id: 'cat-nafta', nombre: 'Nafta/Combustible', tipo: 'egreso', color: '#f59e0b', icono: 'â›½' },
-    { id: 'cat-otros-egreso', nombre: 'Otros gastos', tipo: 'egreso', color: '#6b7280', icono: 'ðŸ“‹' },
-    { id: 'cat-otros-ingreso', nombre: 'Otros ingresos', tipo: 'ingreso', color: '#06b6d4', icono: 'âž•' },
-    { id: 'cat-retiro', nombre: 'Retiro personal/DueÃ±o', tipo: 'egreso', color: '#a78bfa', icono: 'ðŸ’°' },
-    { id: 'cat-servicios', nombre: 'Servicios (luz/internet)', tipo: 'egreso', color: '#8b5cf6', icono: 'ðŸ’¡' },
-    { id: 'cat-servicios-it', nombre: 'Servicios IT/Soporte', tipo: 'ingreso', color: '#10b981', icono: 'ðŸ”§' },
-    { id: 'cat-sueldos', nombre: 'Sueldos/Honorarios', tipo: 'egreso', color: '#ec4899', icono: 'ðŸ‘¥' },
-    { id: 'cat-venta-equipos', nombre: 'Venta a clientes', tipo: 'ingreso', color: '#22c55e', icono: 'ðŸ›’' },
-  ],
+  categorias: CATEGORIAS_DEFAULT,
   cuentas: [
     {
       nombre: 'Banco BBVA',
@@ -125,6 +109,6 @@ export const INITIAL_BACKUP: {
   configuracion: [
     { id: '00b6e7b2-34fc-4143-b8f9-30ec14d65993', clave: 'cotizacion_usd', valor: '1425' },
     { id: '4fc03836-77d7-4bef-aa60-38d83c5af763', clave: 'moneda_base', valor: 'ARS' },
-    { id: 'fbf5b176-ced9-4449-97c7-b45422037f2b', clave: 'nombre_negocio', valor: 'Bartez TecnologÃ­a' },
+    { id: 'fbf5b176-ced9-4449-97c7-b45422037f2b', clave: 'nombre_negocio', valor: 'Bartez Tecnologia' },
   ],
 }

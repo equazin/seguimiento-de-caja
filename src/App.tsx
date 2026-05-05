@@ -7,6 +7,7 @@ import { Movimientos } from '@/pages/Movimientos'
 import { Cuentas } from '@/pages/Cuentas'
 import { Reportes } from '@/pages/Reportes'
 import { Configuracion } from '@/pages/Configuracion'
+import { MovimientoModal } from '@/components/movimientos/MovimientoModal'
 import { seedDatosIniciales } from '@/lib/seed'
 import type { Movimiento } from '@/db/schema'
 
@@ -88,10 +89,7 @@ export default function App() {
             path="/movimientos"
             element={
               <Movimientos
-                modalOpen={modalOpen}
                 onModalOpen={handleNuevoMovimiento}
-                onModalClose={handleCloseModal}
-                movimientoEditar={movimientoEditar}
                 onEdit={handleEditMovimiento}
               />
             }
@@ -101,6 +99,11 @@ export default function App() {
           <Route path="/configuracion" element={<Configuracion />} />
         </Route>
       </Routes>
+      <MovimientoModal
+        open={modalOpen}
+        onClose={handleCloseModal}
+        movimiento={movimientoEditar}
+      />
     </BrowserRouter>
   )
 }
