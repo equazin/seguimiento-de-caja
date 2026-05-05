@@ -1,0 +1,473 @@
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { Plus, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
+import { Dialog } from '@/components/ui/Dialog'
+import { Input, Select, Textarea } from '@/components/ui/Input'
+import { Button } from '@/components/ui/Button'
+import { useAuth } from '@/lib/auth'
+import { useClientes, useProductos } from '@/hooks/useCatalogo'
+import {
+  crearDocumento,
+  actualizarDocumento,
+  useDocumentoItems,
+} from '@/hooks/useDocumentos'
+import { calcularTotales, type ItemDraft } from '@/lib/documentos'
+import { formatMoney, todayStr } from '@/lib/formatters'
+import type {
+  Documento,
+  TipoDocumentoComercial,
+  EstadoDocumento,
+  Producto,
+} from '@/db/schema'
+
+type TipoVenta = 'presupuesto' | 'pedido' | 'remito' | 'factura'
+
+const TIPOS_VENTA: { value: TipoVenta; label: string }[] = [
+  { value: 'presupuesto', label: 'Presupuesto' },
+  { value: 'pedido', label: 'Pedido' },
+  { value: 'remito', label: 'Remito' },
+  { value: 'factura', label: 'Factura' },
+]
+
+interface DocumentoModalProps {
+  open: boolean
+  onClose: () => void
+  documento: Documento | null
+}
+
+interface FormState {
+  tipo_documento: TipoVenta
+  cliente_id: string
+  fecha: string
+  fecha_vencimiento: string
+  moneda: 'ARS' | 'USD'
+  tipo_cambio: string
+  observaciones: string
+  estado: EstadoDocumento
+  items: ItemDraft[]
+}
+
+function emptyForm(): FormState {
+  return {
+    tipo_documento: 'presupuesto',
+    cliente_id: '',
+    fecha: todayStr(),
+    fecha_vencimiento: '',
+    moneda: 'ARS',
+    tipo_cambio: '1',
+    observaciones: '',
+    estado: 'borrador',
+    items: [],
+  }
+}
+
+function emptyItem(): ItemDraft {
+  return {
+    producto_id: null,
+    codigo: null,
+    descripcion: '',
+    cantidad: 1,
+    unidad_medida: 'unidad',
+    precio_unitario: 0,
+    bonificacion: 0,
+    alicuota_iva: 21,
+  }
+}
+
+export function DocumentoModal({ open, onClose, documento }: DocumentoModalProps) {
+  const { empresa } = useAuth()
+  const clientes = useClientes({ soloActivos: true })
+  const productos = useProductos({ soloActivos: true })
+  const documentoItems = useDocumentoItems(documento?.id ?? null)
+
+  const [form, setForm] = useState<FormState>(emptyForm)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    if (documento) {
+      setForm({
+        tipo_documento: documento.tipo_documento as TipoVenta,
+        cliente_id: documento.cliente_id ?? '',
+        fecha: documento.fecha,
+        fecha_vencimiento: documento.fecha_vencimiento ?? '',
+        moneda: documento.moneda,
+        tipo_cambio: String(documento.tipo_cambio),
+        observaciones: documento.observaciones ?? '',
+        estado: documento.estado,
+        items: [],  // los carga el effect siguiente cuando llegan
+      })
+    } else {
+      setForm(emptyForm())
+    }
+    setError(null)
+  }, [open, documento?.id])
+
+  // Cargar items existentes en el form al editar
+  useEffect(() => {
+    if (!documento || !documentoItems) return
+    setForm(prev => ({
+      ...prev,
+      items: documentoItems.map(it => ({
+        producto_id: it.producto_id,
+        codigo: it.codigo,
+        descripcion: it.descripcion,
+        cantidad: it.cantidad,
+        unidad_medida: it.unidad_medida,
+        precio_unitario: it.precio_unitario,
+        bonificacion: it.bonificacion,
+        alicuota_iva: it.alicuota_iva,
+      })),
+    }))
+  }, [documento?.id, documentoItems?.length])
+
+  const productosMap = useMemo(
+    () => new Map((productos ?? []).map(p => [p.id, p])),
+    [productos]
+  )
+
+  const totales = useMemo(() => calcularTotales(form.items).totales, [form.items])
+
+  function update<K extends keyof FormState>(key: K, value: FormState[K]) {
+    setForm(prev => ({ ...prev, [key]: value }))
+  }
+
+  function updateItem(idx: number, patch: Partial<ItemDraft>) {
+    setForm(prev => ({
+      ...prev,
+      items: prev.items.map((it, i) => (i === idx ? { ...it, ...patch } : it)),
+    }))
+  }
+
+  function pickProducto(idx: number, productoId: string) {
+    if (!productoId) {
+      updateItem(idx, { producto_id: null })
+      return
+    }
+    const p = productosMap.get(productoId)
+    if (!p) return
+    updateItem(idx, {
+      producto_id: p.id,
+      codigo: p.codigo,
+      descripcion: p.nombre,
+      unidad_medida: p.unidad_medida,
+      precio_unitario: p.precio_neto,
+      alicuota_iva: p.alicuota_iva,
+    })
+  }
+
+  function addItem(producto?: Producto) {
+    const base = emptyItem()
+    if (producto) {
+      base.producto_id = producto.id
+      base.codigo = producto.codigo
+      base.descripcion = producto.nombre
+      base.unidad_medida = producto.unidad_medida
+      base.precio_unitario = producto.precio_neto
+      base.alicuota_iva = producto.alicuota_iva
+    }
+    setForm(prev => ({ ...prev, items: [...prev.items, base] }))
+  }
+
+  function removeItem(idx: number) {
+    setForm(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== idx) }))
+  }
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>, estadoFinal: EstadoDocumento) {
+    event.preventDefault()
+    if (!empresa) {
+      setError('No hay empresa configurada')
+      return
+    }
+    if (form.items.length === 0) {
+      setError('Agregá al menos un item')
+      return
+    }
+    if (form.items.some(it => !it.descripcion.trim())) {
+      setError('Todos los items necesitan descripción')
+      return
+    }
+    setError(null)
+    setSubmitting(true)
+    try {
+      const tipoCambio = Number(form.tipo_cambio.replace(',', '.'))
+      const payload = {
+        clienteId: form.cliente_id || null,
+        proveedorId: null,
+        fecha: form.fecha,
+        fechaVencimiento: form.fecha_vencimiento || null,
+        moneda: form.moneda,
+        tipoCambio: Number.isFinite(tipoCambio) && tipoCambio > 0 ? tipoCambio : 1,
+        observaciones: form.observaciones.trim() || null,
+        estado: estadoFinal,
+        items: form.items,
+      }
+      if (documento) {
+        await actualizarDocumento({ id: documento.id, ...payload })
+        toast.success('Documento actualizado')
+      } else {
+        await crearDocumento({
+          empresaId: empresa.id,
+          tipoOperacion: 'venta',
+          tipoDocumento: form.tipo_documento as TipoDocumentoComercial,
+          ...payload,
+        })
+        toast.success('Documento creado')
+      }
+      onClose()
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'No se pudo guardar'
+      setError(message)
+      toast.error(message)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const editable = !documento || documento.estado === 'borrador'
+  const titulo = documento
+    ? `Editar ${documento.tipo_documento} ${documento.numero_interno}`
+    : 'Nuevo documento de venta'
+
+  return (
+    <Dialog open={open} onClose={onClose} title={titulo} size="xl">
+      <form className="space-y-5" onSubmit={e => onSubmit(e, form.estado)}>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Select
+            label="Tipo"
+            value={form.tipo_documento}
+            onChange={e => update('tipo_documento', e.target.value as TipoVenta)}
+            disabled={!!documento}
+          >
+            {TIPOS_VENTA.map(t => (
+              <option key={t.value} value={t.value}>{t.label}</option>
+            ))}
+          </Select>
+          <Select
+            label="Cliente"
+            value={form.cliente_id}
+            onChange={e => update('cliente_id', e.target.value)}
+          >
+            <option value="">— Consumidor final —</option>
+            {(clientes ?? []).map(c => (
+              <option key={c.id} value={c.id}>
+                {c.razon_social}
+              </option>
+            ))}
+          </Select>
+          <Input
+            label="Fecha"
+            type="date"
+            value={form.fecha}
+            onChange={e => update('fecha', e.target.value)}
+            required
+          />
+          <Input
+            label="Vencimiento"
+            type="date"
+            value={form.fecha_vencimiento}
+            onChange={e => update('fecha_vencimiento', e.target.value)}
+          />
+          <Select
+            label="Moneda"
+            value={form.moneda}
+            onChange={e => update('moneda', e.target.value as 'ARS' | 'USD')}
+          >
+            <option value="ARS">ARS</option>
+            <option value="USD">USD</option>
+          </Select>
+          {form.moneda === 'USD' && (
+            <Input
+              label="Tipo de cambio"
+              type="number"
+              step="0.01"
+              min="0"
+              value={form.tipo_cambio}
+              onChange={e => update('tipo_cambio', e.target.value)}
+            />
+          )}
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-white">Items</h3>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => addItem()}
+              disabled={!editable}
+            >
+              <Plus size={14} />
+              Agregar item
+            </Button>
+          </div>
+
+          {form.items.length === 0 ? (
+            <div className="bg-surface-2 border border-dashed border-border rounded-lg p-6 text-center text-sm text-muted-foreground">
+              No hay items. Agregá al menos uno.
+            </div>
+          ) : (
+            <div className="overflow-x-auto bg-surface-2 border border-border rounded-lg">
+              <table className="w-full text-sm">
+                <thead className="text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-medium">Producto / descripción</th>
+                    <th className="text-right px-3 py-2 font-medium w-20">Cant.</th>
+                    <th className="text-right px-3 py-2 font-medium w-28">P. unit.</th>
+                    <th className="text-right px-3 py-2 font-medium w-20">Bonif. %</th>
+                    <th className="text-right px-3 py-2 font-medium w-20">IVA %</th>
+                    <th className="text-right px-3 py-2 font-medium w-28">Subtotal</th>
+                    <th className="text-right px-3 py-2 font-medium w-10"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {form.items.map((it, idx) => {
+                    const subtotal = it.cantidad * it.precio_unitario * (1 - it.bonificacion / 100)
+                    return (
+                      <tr key={idx} className="border-t border-border">
+                        <td className="px-3 py-2">
+                          <select
+                            value={it.producto_id ?? ''}
+                            onChange={e => pickProducto(idx, e.target.value)}
+                            disabled={!editable}
+                            className="w-full bg-surface border border-border rounded-md px-2 py-1 text-xs text-white mb-1"
+                          >
+                            <option value="">— Manual —</option>
+                            {(productos ?? []).map(p => (
+                              <option key={p.id} value={p.id}>
+                                {p.nombre}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            value={it.descripcion}
+                            onChange={e => updateItem(idx, { descripcion: e.target.value })}
+                            placeholder="Descripción"
+                            disabled={!editable}
+                            className="w-full bg-surface border border-border rounded-md px-2 py-1 text-xs text-white"
+                          />
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={it.cantidad}
+                            onChange={e => updateItem(idx, { cantidad: Number(e.target.value) || 0 })}
+                            disabled={!editable}
+                            className="w-full bg-surface border border-border rounded-md px-2 py-1 text-xs text-white text-right"
+                          />
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={it.precio_unitario}
+                            onChange={e => updateItem(idx, { precio_unitario: Number(e.target.value) || 0 })}
+                            disabled={!editable}
+                            className="w-full bg-surface border border-border rounded-md px-2 py-1 text-xs text-white text-right"
+                          />
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            max="100"
+                            value={it.bonificacion}
+                            onChange={e => updateItem(idx, { bonificacion: Number(e.target.value) || 0 })}
+                            disabled={!editable}
+                            className="w-full bg-surface border border-border rounded-md px-2 py-1 text-xs text-white text-right"
+                          />
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <select
+                            value={it.alicuota_iva}
+                            onChange={e => updateItem(idx, { alicuota_iva: Number(e.target.value) })}
+                            disabled={!editable}
+                            className="w-full bg-surface border border-border rounded-md px-2 py-1 text-xs text-white text-right"
+                          >
+                            {[0, 2.5, 5, 10.5, 21, 27].map(a => (
+                              <option key={a} value={a}>{a}%</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="px-3 py-2 text-right text-white text-xs">
+                          {formatMoney(subtotal, form.moneda)}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <button
+                            type="button"
+                            onClick={() => removeItem(idx)}
+                            disabled={!editable}
+                            className="p-1 rounded text-muted-foreground hover:text-danger transition-colors disabled:opacity-30"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Textarea
+            label="Observaciones"
+            value={form.observaciones}
+            onChange={e => update('observaciones', e.target.value)}
+          />
+          <div className="bg-surface-2 border border-border rounded-lg p-4 space-y-2 text-sm">
+            <div className="flex justify-between text-muted-foreground">
+              <span>Subtotal neto</span>
+              <span className="text-white">{formatMoney(totales.subtotal, form.moneda)}</span>
+            </div>
+            <div className="flex justify-between text-muted-foreground">
+              <span>IVA</span>
+              <span className="text-white">{formatMoney(totales.iva_total, form.moneda)}</span>
+            </div>
+            {totales.exento > 0 && (
+              <div className="flex justify-between text-muted-foreground">
+                <span>Exento</span>
+                <span className="text-white">{formatMoney(totales.exento, form.moneda)}</span>
+              </div>
+            )}
+            <div className="border-t border-border pt-2 flex justify-between font-semibold">
+              <span className="text-white">Total</span>
+              <span className="text-white">{formatMoney(totales.total, form.moneda)}</span>
+            </div>
+          </div>
+        </div>
+
+        {error && <p className="text-xs text-danger">{error}</p>}
+
+        <div className="flex flex-col sm:flex-row justify-end gap-2 pt-3 border-t border-border">
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={submitting || !editable}
+            onClick={(e) => onSubmit(e as unknown as FormEvent<HTMLFormElement>, 'borrador')}
+          >
+            Guardar borrador
+          </Button>
+          <Button
+            type="button"
+            disabled={submitting || !editable}
+            onClick={(e) => onSubmit(e as unknown as FormEvent<HTMLFormElement>, 'confirmado')}
+          >
+            {submitting ? 'Guardando…' : 'Confirmar'}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  )
+}
