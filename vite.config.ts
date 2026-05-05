@@ -10,4 +10,19 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  build: {
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-router-dom'],
+          recharts: ['recharts'],
+          dexie: ['dexie', 'dexie-react-hooks'],
+          xlsx: ['xlsx'],
+          jspdf: ['jspdf', 'jspdf-autotable'],
+          ui: ['lucide-react', 'sonner'],
+        },
+      },
+    },
+  },
 })

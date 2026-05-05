@@ -29,7 +29,8 @@ jobs:
 
       - run: npm run build
         env:
-          GITHUB_PAGES: true
+          GITHUB_PAGES: "true"
+          NODE_OPTIONS: "--max-old-space-size=4096"
 
       - uses: actions/upload-pages-artifact@v3
         with:
