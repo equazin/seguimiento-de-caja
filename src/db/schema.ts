@@ -1,4 +1,5 @@
 export { supabase } from './supabase'
+export { supabaseAfip } from './supabaseAfip'
 export type {
   Movimiento,
   Categoria,

@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { supabase } from '@/db/schema'
+import { supabase, supabaseAfip } from '@/db/schema'
 import type { Empresa } from '@/db/schema'
 
 interface AuthContextValue {
@@ -66,18 +66,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setEmpresaLoading(true)
     setEmpresaError(null)
     try {
-      // empresas todavia no esta declarada en el Database tipado;
-      // se consulta con cast hasta migrar el tipado del cliente.
-      const client = supabase as unknown as {
-        from: (table: string) => {
-          select: (columns: string) => {
-            limit: (n: number) => {
-              maybeSingle: () => Promise<{ data: Empresa | null; error: Error | null }>
-            }
-          }
-        }
-      }
-      const { data, error } = await client
+      const { data, error } = await supabaseAfip
         .from('empresas')
         .select('*')
         .limit(1)
