@@ -1,0 +1,331 @@
+import { useState, useEffect, useRef } from 'react'
+import { Dialog } from '@/components/ui/Dialog'
+import { Input, Select, Textarea } from '@/components/ui/Input'
+import { Button } from '@/components/ui/Button'
+import { useCategorias } from '@/hooks/useCategorias'
+import { useCuentas } from '@/hooks/useCuentas'
+import { crearMovimiento, actualizarMovimiento } from '@/hooks/useMovimientos'
+import { getContactosUsados } from '@/db/queries'
+import { METODOS_PAGO } from '@/lib/constants'
+import { todayStr } from '@/lib/formatters'
+import { toast } from 'sonner'
+import type { Movimiento, TipoMovimiento, MetodoPago } from '@/db/schema'
+
+interface Props {
+  open: boolean
+  onClose: () => void
+  movimiento?: Movimiento | null
+}
+
+interface FormState {
+  fecha: string
+  tipo: TipoMovimiento
+  monto_ars: string
+  monto_usd: string
+  tipo_cambio: string
+  categoria_id: string
+  subcategoria: string
+  descripcion: string
+  contacto: string
+  metodo_pago: MetodoPago
+  cuenta_id: string
+  notas: string
+}
+
+const INITIAL: FormState = {
+  fecha: todayStr(),
+  tipo: 'egreso',
+  monto_ars: '',
+  monto_usd: '',
+  tipo_cambio: '',
+  categoria_id: '',
+  subcategoria: '',
+  descripcion: '',
+  contacto: '',
+  metodo_pago: 'transferencia',
+  cuenta_id: '',
+  notas: '',
+}
+
+export function MovimientoModal({ open, onClose, movimiento }: Props) {
+  const [form, setForm] = useState<FormState>(INITIAL)
+  const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({})
+  const [loading, setLoading] = useState(false)
+  const [contactosSugeridos, setContactosSugeridos] = useState<string[]>([])
+  const [showSugerencias, setShowSugerencias] = useState(false)
+  const contactoRef = useRef<HTMLInputElement>(null)
+
+  const categorias = useCategorias()
+  const cuentas = useCuentas()
+
+  const categoriasFiltered = categorias?.filter(c => c.tipo === form.tipo) ?? []
+
+  useEffect(() => {
+    if (!open) return
+    if (movimiento) {
+      setForm({
+        fecha: movimiento.fecha,
+        tipo: movimiento.tipo,
+        monto_ars: String(movimiento.monto_ars),
+        monto_usd: movimiento.monto_usd ? String(movimiento.monto_usd) : '',
+        tipo_cambio: movimiento.tipo_cambio ? String(movimiento.tipo_cambio) : '',
+        categoria_id: movimiento.categoria_id,
+        subcategoria: movimiento.subcategoria ?? '',
+        descripcion: movimiento.descripcion,
+        contacto: movimiento.contacto ?? '',
+        metodo_pago: movimiento.metodo_pago,
+        cuenta_id: movimiento.cuenta_id,
+        notas: movimiento.notas ?? '',
+      })
+    } else {
+      setForm(f => ({
+        ...INITIAL,
+        fecha: todayStr(),
+        cuenta_id: cuentas?.[0]?.id ?? '',
+      }))
+    }
+    setErrors({})
+    getContactosUsados().then(setContactosSugeridos)
+  }, [open, movimiento])
+
+  // Auto-set cuenta when cuentas load
+  useEffect(() => {
+    if (!movimiento && cuentas?.length && !form.cuenta_id) {
+      setForm(f => ({ ...f, cuenta_id: cuentas[0].id }))
+    }
+  }, [cuentas])
+
+  // Auto-set first category when tipo changes
+  useEffect(() => {
+    if (categoriasFiltered.length && !movimiento) {
+      setForm(f => ({ ...f, categoria_id: categoriasFiltered[0]?.id ?? '' }))
+    }
+  }, [form.tipo])
+
+  const set = (key: keyof FormState, value: string) => {
+    setForm(f => ({ ...f, [key]: value }))
+    setErrors(e => ({ ...e, [key]: undefined }))
+  }
+
+  const validate = (): boolean => {
+    const errs: typeof errors = {}
+    if (!form.fecha) errs.fecha = 'Requerido'
+    if (!form.monto_ars || isNaN(Number(form.monto_ars)) || Number(form.monto_ars) <= 0) {
+      errs.monto_ars = 'Monto inválido'
+    }
+    if (!form.descripcion.trim()) errs.descripcion = 'Requerido'
+    if (!form.categoria_id) errs.categoria_id = 'Requerido'
+    if (!form.cuenta_id) errs.cuenta_id = 'Requerido'
+    setErrors(errs)
+    return Object.keys(errs).length === 0
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!validate()) return
+    setLoading(true)
+    try {
+      const data = {
+        fecha: form.fecha,
+        tipo: form.tipo,
+        monto_ars: Number(form.monto_ars),
+        monto_usd: form.monto_usd ? Number(form.monto_usd) : undefined,
+        tipo_cambio: form.tipo_cambio ? Number(form.tipo_cambio) : undefined,
+        categoria_id: form.categoria_id,
+        subcategoria: form.subcategoria || undefined,
+        descripcion: form.descripcion.trim(),
+        contacto: form.contacto.trim() || undefined,
+        metodo_pago: form.metodo_pago,
+        cuenta_id: form.cuenta_id,
+        notas: form.notas.trim() || undefined,
+      }
+      if (movimiento) {
+        await actualizarMovimiento(movimiento.id, data)
+        toast.success('Movimiento actualizado')
+      } else {
+        await crearMovimiento(data)
+        toast.success('Movimiento creado')
+      }
+      onClose()
+    } catch {
+      toast.error('Error al guardar')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const sugerenciasFiltradas = contactosSugeridos.filter(c =>
+    c.toLowerCase().includes(form.contacto.toLowerCase()) && form.contacto
+  )
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={movimiento ? 'Editar movimiento' : 'Nuevo movimiento'}
+      size="lg"
+    >
+      <form onSubmit={handleSubmit} className="space-y-5">
+        {/* Tipo */}
+        <div className="flex gap-2">
+          {(['egreso', 'ingreso'] as TipoMovimiento[]).map(t => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => set('tipo', t)}
+              className={`flex-1 py-2.5 rounded-lg text-sm font-semibold border transition-all ${
+                form.tipo === t
+                  ? t === 'ingreso'
+                    ? 'bg-success/15 border-success/40 text-success'
+                    : 'bg-danger/15 border-danger/40 text-danger'
+                  : 'border-border text-muted-foreground hover:bg-surface-2'
+              }`}
+            >
+              {t === 'ingreso' ? '↓ Ingreso' : '↑ Egreso'}
+            </button>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <Input
+            label="Fecha"
+            type="date"
+            value={form.fecha}
+            onChange={e => set('fecha', e.target.value)}
+            error={errors.fecha}
+            required
+          />
+          <Input
+            label="Monto ARS"
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="0.00"
+            value={form.monto_ars}
+            onChange={e => set('monto_ars', e.target.value)}
+            error={errors.monto_ars}
+            required
+          />
+        </div>
+
+        <Input
+          label="Descripción"
+          placeholder="Descripción del movimiento"
+          value={form.descripcion}
+          onChange={e => set('descripcion', e.target.value)}
+          error={errors.descripcion}
+          required
+        />
+
+        <div className="grid grid-cols-2 gap-4">
+          <Select
+            label="Categoría"
+            value={form.categoria_id}
+            onChange={e => set('categoria_id', e.target.value)}
+            error={errors.categoria_id}
+            required
+          >
+            <option value="">Seleccionar...</option>
+            {categoriasFiltered.map(c => (
+              <option key={c.id} value={c.id}>{c.icono} {c.nombre}</option>
+            ))}
+          </Select>
+          <Input
+            label="Subcategoría"
+            placeholder="Ej: Combustible - GNC"
+            value={form.subcategoria}
+            onChange={e => set('subcategoria', e.target.value)}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <Select
+            label="Cuenta"
+            value={form.cuenta_id}
+            onChange={e => set('cuenta_id', e.target.value)}
+            error={errors.cuenta_id}
+            required
+          >
+            <option value="">Seleccionar...</option>
+            {cuentas?.map(c => (
+              <option key={c.id} value={c.id}>{c.nombre}</option>
+            ))}
+          </Select>
+          <Select
+            label="Método de pago"
+            value={form.metodo_pago}
+            onChange={e => set('metodo_pago', e.target.value as MetodoPago)}
+          >
+            {METODOS_PAGO.map(m => (
+              <option key={m.value} value={m.value}>{m.icono} {m.label}</option>
+            ))}
+          </Select>
+        </div>
+
+        {/* Contacto con autocompletado */}
+        <div className="relative">
+          <Input
+            ref={contactoRef}
+            label="Contacto (cliente/proveedor)"
+            placeholder="Nombre del cliente o proveedor"
+            value={form.contacto}
+            onChange={e => set('contacto', e.target.value)}
+            onFocus={() => setShowSugerencias(true)}
+            onBlur={() => setTimeout(() => setShowSugerencias(false), 150)}
+          />
+          {showSugerencias && sugerenciasFiltradas.length > 0 && (
+            <div className="absolute top-full left-0 right-0 mt-1 bg-surface-2 border border-border rounded-lg shadow-xl z-10 overflow-hidden">
+              {sugerenciasFiltradas.slice(0, 5).map(s => (
+                <button
+                  key={s}
+                  type="button"
+                  className="w-full text-left px-3 py-2 text-sm text-white hover:bg-surface-3 transition-colors"
+                  onClick={() => { set('contacto', s); setShowSugerencias(false) }}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* USD opcional */}
+        <div className="grid grid-cols-2 gap-4">
+          <Input
+            label="Monto USD (opcional)"
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="USD 0.00"
+            value={form.monto_usd}
+            onChange={e => set('monto_usd', e.target.value)}
+          />
+          <Input
+            label="Tipo de cambio"
+            type="number"
+            min="0"
+            placeholder="Ej: 1280"
+            value={form.tipo_cambio}
+            onChange={e => set('tipo_cambio', e.target.value)}
+          />
+        </div>
+
+        <Textarea
+          label="Notas adicionales"
+          placeholder="Observaciones, referencias, etc."
+          value={form.notas}
+          onChange={e => set('notas', e.target.value)}
+        />
+
+        <div className="flex gap-3 justify-end pt-2">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" loading={loading}>
+            {movimiento ? 'Guardar cambios' : 'Crear movimiento'}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  )
+}
