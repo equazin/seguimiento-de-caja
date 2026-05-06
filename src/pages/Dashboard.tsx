@@ -1,4 +1,5 @@
-import { Activity, AlertTriangle, FileCheck2, ShieldCheck, TrendingDown, TrendingUp, Wallet } from 'lucide-react'
+import { Activity, AlertTriangle, FileCheck2, ShieldCheck, TrendingDown, TrendingUp, Wallet, type LucideIcon } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { useDashboard } from '@/hooks/useDashboard'
 import { useCuentasConSaldo } from '@/hooks/useCuentas'
 import { useCategorias } from '@/hooks/useCategorias'
@@ -12,11 +13,41 @@ import { RecentMovimientos } from '@/components/dashboard/RecentMovimientos'
 import { Badge } from '@/components/ui/Badge'
 import { SkeletonKPI } from '@/components/ui/Skeleton'
 import { useAuth } from '@/lib/auth'
-import { formatMoney, getMesActual } from '@/lib/formatters'
+import { cn, formatMoney, getMesActual } from '@/lib/formatters'
 import type { Movimiento } from '@/db/schema'
 
 interface Props {
   onEditMovimiento: (m: Movimiento) => void
+}
+
+interface ChipProps {
+  to: string
+  icon: LucideIcon
+  iconClassName?: string
+  label: string
+  value: string
+  title?: string
+}
+
+function CockpitChip({ to, icon: Icon, iconClassName, label, value, title }: ChipProps) {
+  const navigate = useNavigate()
+  return (
+    <button
+      type="button"
+      onClick={() => navigate(to)}
+      title={title ?? `Ir a ${label.toLowerCase()}`}
+      className={cn(
+        'group rounded-lg border border-border bg-surface-2 px-3 py-2 text-left transition-colors',
+        'hover:border-primary/40 hover:bg-surface-3 focus:outline-none focus:ring-2 focus:ring-primary/40'
+      )}
+    >
+      <p className="flex items-center gap-2 text-xs text-muted-foreground group-hover:text-white">
+        <Icon size={14} className={iconClassName} />
+        {label}
+      </p>
+      <p className="mt-1 text-sm font-semibold text-white">{value}</p>
+    </button>
+  )
 }
 
 export function Dashboard({ onEditMovimiento }: Props) {
@@ -53,31 +84,36 @@ export function Dashboard({ onEditMovimiento }: Props) {
             </p>
           </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <div className="rounded-lg border border-border bg-surface-2 px-3 py-2">
-              <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                <ShieldCheck size={14} className="text-success" />
-                ARCA
-              </p>
-              <p className="mt-1 text-sm font-semibold text-white">
-                {empresa?.arca_ambiente === 'homologacion' ? 'Homologación activa' : 'Sin configurar'}
-              </p>
-            </div>
-            <div className="rounded-lg border border-border bg-surface-2 px-3 py-2">
-              <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                <FileCheck2 size={14} className="text-info" />
-                Últimos mov.
-              </p>
-              <p className="mt-1 text-sm font-semibold text-white">{ultimos?.length ?? 0} registros</p>
-            </div>
-            <div className="rounded-lg border border-border bg-surface-2 px-3 py-2">
-              <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                <AlertTriangle size={14} className={productosStockBajo.length > 0 ? 'text-warning' : 'text-success'} />
-                Stock
-              </p>
-              <p className="mt-1 text-sm font-semibold text-white">
-                {productosStockBajo.length > 0 ? `${productosStockBajo.length} alertas` : 'Sin alertas'}
-              </p>
-            </div>
+            <CockpitChip
+              to="/fiscal"
+              icon={ShieldCheck}
+              iconClassName={empresa?.arca_ambiente ? 'text-success' : 'text-muted-foreground'}
+              label="ARCA"
+              value={
+                empresa?.arca_ambiente === 'produccion'
+                  ? 'Producción activa'
+                  : empresa?.arca_ambiente === 'homologacion'
+                    ? 'Homologación activa'
+                    : 'Sin configurar'
+              }
+              title="Ir a Fiscal para configurar ARCA"
+            />
+            <CockpitChip
+              to="/movimientos"
+              icon={FileCheck2}
+              iconClassName="text-info"
+              label="Últimos mov."
+              value={`${ultimos?.length ?? 0} registros`}
+              title="Ver movimientos"
+            />
+            <CockpitChip
+              to="/catalogo"
+              icon={AlertTriangle}
+              iconClassName={productosStockBajo.length > 0 ? 'text-warning' : 'text-success'}
+              label="Stock"
+              value={productosStockBajo.length > 0 ? `${productosStockBajo.length} alertas` : 'Sin alertas'}
+              title={productosStockBajo.length > 0 ? 'Ver productos con stock bajo' : 'Ir al catálogo'}
+            />
           </div>
         </div>
       </section>
@@ -89,6 +125,10 @@ export function Dashboard({ onEditMovimiento }: Props) {
           icono={Wallet}
           variante="default"
           subtitulo="Suma de todas las cuentas"
+          delta={{
+            valorAnterior: data.saldoHace30Dias,
+            labelComparacion: 'vs hace 30 días',
+          }}
         />
         <KPICard
           titulo={`Ingresos - ${mesLabel}`}
@@ -96,6 +136,7 @@ export function Dashboard({ onEditMovimiento }: Props) {
           icono={TrendingUp}
           variante="ingreso"
           subtitulo="Mes actual"
+          delta={{ valorAnterior: data.resumenMesAnterior.ingresos }}
         />
         <KPICard
           titulo={`Egresos - ${mesLabel}`}
@@ -103,6 +144,7 @@ export function Dashboard({ onEditMovimiento }: Props) {
           icono={TrendingDown}
           variante="egreso"
           subtitulo="Mes actual"
+          delta={{ valorAnterior: data.resumenMesAnterior.egresos, invertirSigno: true }}
         />
         <KPICard
           titulo="Resultado neto"
@@ -110,6 +152,7 @@ export function Dashboard({ onEditMovimiento }: Props) {
           icono={Activity}
           variante="neutral"
           subtitulo={mesLabel}
+          delta={{ valorAnterior: data.resumenMesAnterior.resultado }}
         />
       </div>
 

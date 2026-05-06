@@ -24,17 +24,37 @@ const TITULOS: Record<string, { titulo: string; subtitulo?: string }> = {
 
 export function Layout({ onNuevoMovimiento, onGlobalAction }: LayoutProps) {
   const [collapsed, setCollapsed] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
   const info = TITULOS[location.pathname] ?? { titulo: 'Bartez Caja' }
 
+  // cerrar drawer al navegar
+  useEffect(() => {
+    setMobileOpen(false)
+  }, [location.pathname])
+
+  // bloquear scroll del body cuando el drawer está abierto
+  useEffect(() => {
+    if (!mobileOpen) return
+    const original = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = original
+    }
+  }, [mobileOpen])
+
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Escape' && mobileOpen) {
+      setMobileOpen(false)
+      return
+    }
     if (e.key === 'n' || e.key === 'N') {
       const target = e.target as HTMLElement
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return
       e.preventDefault()
       onNuevoMovimiento()
     }
-  }, [onNuevoMovimiento])
+  }, [onNuevoMovimiento, mobileOpen])
 
   useEffect(() => {
     document.addEventListener('keydown', handleKeyDown)
@@ -43,17 +63,25 @@ export function Layout({ onNuevoMovimiento, onGlobalAction }: LayoutProps) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(c => !c)} />
+      <Sidebar
+        collapsed={collapsed}
+        onToggle={() => setCollapsed(c => !c)}
+        mobileOpen={mobileOpen}
+        onMobileClose={() => setMobileOpen(false)}
+      />
       <div className={cn(
         'flex flex-1 flex-col overflow-hidden transition-all duration-300',
-        collapsed ? 'ml-16' : 'ml-60'
+        // En mobile el sidebar es overlay, así que no aplicamos margen.
+        'md:transition-[margin]',
+        collapsed ? 'md:ml-16' : 'md:ml-60'
       )}>
         <Header
           titulo={info.titulo}
           subtitulo={info.subtitulo}
           onGlobalAction={onGlobalAction}
+          onOpenMenu={() => setMobileOpen(true)}
         />
-        <main className="flex-1 overflow-y-auto p-5 lg:p-6">
+        <main className="flex-1 overflow-y-auto p-4 md:p-5 lg:p-6">
           <Outlet />
         </main>
       </div>
