@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Search, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Dialog } from '@/components/ui/Dialog'
 import { Input, Select, Textarea } from '@/components/ui/Input'
@@ -20,8 +20,10 @@ import type {
   Documento,
   TipoDocumentoComercial,
   EstadoDocumento,
+  Cliente,
   MetodoPago,
   Producto,
+  Proveedor,
   TipoOperacion,
 } from '@/db/schema'
 
@@ -37,6 +39,7 @@ const TIPOS_DOCUMENTO: { value: TipoDocumentoForm; label: string }[] = [
 ]
 
 const TIPOS_CON_CAJA = new Set<TipoDocumentoForm>(['factura', 'nota_credito', 'nota_debito'])
+const TIPOS_DOCUMENTO_BASE = TIPOS_DOCUMENTO.filter(t => !['nota_credito', 'nota_debito'].includes(t.value))
 
 interface DocumentoModalProps {
   open: boolean
@@ -105,6 +108,124 @@ function tituloCaja(tipoDocumento: TipoDocumentoForm, tipoOperacion: TipoOperaci
     return tipoOperacion === 'venta' ? 'Cobro adicional' : 'Pago adicional'
   }
   return tipoOperacion === 'venta' ? 'Cobro de factura' : 'Pago de factura'
+}
+
+interface SearchableOption {
+  value: string
+  label: string
+  description?: string | null
+}
+
+function SearchableSelect({
+  label,
+  value,
+  options,
+  placeholder,
+  emptyLabel,
+  disabled,
+  onChange,
+}: {
+  label: string
+  value: string
+  options: SearchableOption[]
+  placeholder: string
+  emptyLabel: string
+  disabled?: boolean
+  onChange: (value: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const selected = options.find(option => option.value === value)
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return options.slice(0, 8)
+    return options
+      .filter(option =>
+        option.label.toLowerCase().includes(q) ||
+        option.description?.toLowerCase().includes(q)
+      )
+      .slice(0, 8)
+  }, [options, query])
+
+  return (
+    <div className="relative flex flex-col gap-1.5">
+      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+        {label}
+      </label>
+      <div className="relative">
+        <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+        <input
+          value={open ? query : selected?.label ?? ''}
+          onChange={e => {
+            setQuery(e.target.value)
+            setOpen(true)
+          }}
+          onFocus={() => {
+            setQuery('')
+            setOpen(true)
+          }}
+          onBlur={() => window.setTimeout(() => setOpen(false), 120)}
+          placeholder={placeholder}
+          disabled={disabled}
+          className="w-full rounded-lg border border-border bg-surface-2 px-9 py-2.5 text-sm text-white placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50"
+        />
+        {value && !disabled && (
+          <button
+            type="button"
+            onMouseDown={event => event.preventDefault()}
+            onClick={() => {
+              onChange('')
+              setQuery('')
+            }}
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-2 py-1 text-xs text-muted-foreground hover:bg-surface-3 hover:text-white"
+          >
+            Limpiar
+          </button>
+        )}
+      </div>
+      {open && !disabled && (
+        <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border bg-surface shadow-xl shadow-black/30">
+          <button
+            type="button"
+            onMouseDown={event => event.preventDefault()}
+            onClick={() => {
+              onChange('')
+              setQuery('')
+              setOpen(false)
+            }}
+            className="w-full px-3 py-2 text-left text-sm text-muted-foreground hover:bg-surface-2 hover:text-white"
+          >
+            {emptyLabel}
+          </button>
+          {filtered.length === 0 ? (
+            <div className="px-3 py-2 text-sm text-muted-foreground">Sin resultados</div>
+          ) : (
+            filtered.map(option => (
+              <button
+                key={option.value}
+                type="button"
+                onMouseDown={event => event.preventDefault()}
+                onClick={() => {
+                  onChange(option.value)
+                  setQuery('')
+                  setOpen(false)
+                }}
+                className={cn(
+                  'w-full px-3 py-2 text-left text-sm transition-colors hover:bg-surface-2',
+                  value === option.value ? 'text-primary' : 'text-white'
+                )}
+              >
+                <span className="block font-medium">{option.label}</span>
+                {option.description && (
+                  <span className="mt-0.5 block text-xs text-muted-foreground">{option.description}</span>
+                )}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function DocumentoModal({
@@ -206,6 +327,28 @@ export function DocumentoEditorPanel({
     () => new Map((productos ?? []).map(p => [p.id, p])),
     [productos]
   )
+  const contactoOptions = useMemo(
+    () => (contactos ?? []).map((c: Cliente | Proveedor) => ({
+      value: c.id,
+      label: c.razon_social,
+      description: [c.numero_documento, c.email].filter(Boolean).join(' - '),
+    })),
+    [contactos]
+  )
+  const productoOptions = useMemo(
+    () => (productos ?? []).map(p => ({
+      value: p.id,
+      label: p.nombre,
+      description: [p.codigo, formatMoney(p.precio_neto)].filter(Boolean).join(' - '),
+    })),
+    [productos]
+  )
+  const tiposDocumentoDisponibles = useMemo(() => {
+    if (documento?.tipo_documento === 'nota_credito' || documento?.tipo_documento === 'nota_debito') {
+      return TIPOS_DOCUMENTO
+    }
+    return TIPOS_DOCUMENTO_BASE
+  }, [documento?.tipo_documento])
 
   const totales = useMemo(() => calcularTotales(form.items).totales, [form.items])
 
@@ -268,6 +411,14 @@ export function DocumentoEditorPanel({
       setError('Todos los items necesitan descripción')
       return
     }
+    if ((form.tipo_documento === 'nota_credito' || form.tipo_documento === 'nota_debito') && !form.contacto_id) {
+      setError(`La ${form.tipo_documento === 'nota_credito' ? 'nota de credito' : 'nota de debito'} necesita ${contactoLabel.toLowerCase()}`)
+      return
+    }
+    if ((form.tipo_documento === 'nota_credito' || form.tipo_documento === 'nota_debito') && totales.total <= 0) {
+      setError('La nota necesita un total mayor a cero')
+      return
+    }
     setError(null)
     setSubmitting(true)
     try {
@@ -318,6 +469,11 @@ export function DocumentoEditorPanel({
 
   return (
       <form className={cn('space-y-5', className)} onSubmit={e => onSubmit(e, form.estado)}>
+        {!editable && (
+          <div className="rounded-lg border border-info/30 bg-info/10 px-3 py-2 text-sm text-info">
+            Este documento esta confirmado o cerrado. Los datos se muestran en modo solo lectura.
+          </div>
+        )}
         <div className="rounded-xl border border-border bg-surface-2/70 p-4">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -335,27 +491,25 @@ export function DocumentoEditorPanel({
               onChange={e => update('tipo_documento', e.target.value as TipoDocumentoForm)}
               disabled={!!documento}
             >
-              {TIPOS_DOCUMENTO.map(t => (
+              {tiposDocumentoDisponibles.map(t => (
                 <option key={t.value} value={t.value}>{t.label}</option>
               ))}
             </Select>
-            <Select
+            <SearchableSelect
               label={contactoLabel}
               value={form.contacto_id}
-              onChange={e => update('contacto_id', e.target.value)}
-            >
-              <option value="">— {contactoEmpty} —</option>
-              {(contactos ?? []).map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.razon_social}
-                </option>
-              ))}
-            </Select>
+              options={contactoOptions}
+              placeholder={`Buscar ${contactoLabel.toLowerCase()}...`}
+              emptyLabel={contactoEmpty}
+              disabled={!editable}
+              onChange={value => update('contacto_id', value)}
+            />
             <Input
               label="Fecha"
               type="date"
               value={form.fecha}
               onChange={e => update('fecha', e.target.value)}
+              disabled={!editable}
               required
             />
             <Input
@@ -363,11 +517,13 @@ export function DocumentoEditorPanel({
               type="date"
               value={form.fecha_vencimiento}
               onChange={e => update('fecha_vencimiento', e.target.value)}
+              disabled={!editable}
             />
             <Select
               label="Moneda"
               value={form.moneda}
               onChange={e => update('moneda', e.target.value as 'ARS' | 'USD')}
+              disabled={!editable}
             >
               <option value="ARS">ARS</option>
               <option value="USD">USD</option>
@@ -380,6 +536,7 @@ export function DocumentoEditorPanel({
                 min="0"
                 value={form.tipo_cambio}
                 onChange={e => update('tipo_cambio', e.target.value)}
+                disabled={!editable}
               />
             )}
           </div>
@@ -469,19 +626,15 @@ export function DocumentoEditorPanel({
                     return (
                       <tr key={idx} className="border-t border-border align-top">
                         <td className="px-3 py-2">
-                          <select
+                          <SearchableSelect
+                            label="Producto"
                             value={it.producto_id ?? ''}
-                            onChange={e => pickProducto(idx, e.target.value)}
+                            options={productoOptions}
+                            placeholder="Buscar producto..."
+                            emptyLabel="Manual"
                             disabled={!editable}
-                            className="w-full bg-surface border border-border rounded-md px-2 py-1 text-xs text-white mb-1"
-                          >
-                            <option value="">— Manual —</option>
-                            {(productos ?? []).map(p => (
-                              <option key={p.id} value={p.id}>
-                                {p.nombre}
-                              </option>
-                            ))}
-                          </select>
+                            onChange={value => pickProducto(idx, value)}
+                          />
                           <input
                             value={it.descripcion}
                             onChange={e => updateItem(idx, { descripcion: e.target.value })}
@@ -563,6 +716,7 @@ export function DocumentoEditorPanel({
             label="Observaciones"
             value={form.observaciones}
             onChange={e => update('observaciones', e.target.value)}
+            disabled={!editable}
           />
           <div className="space-y-2 rounded-xl border border-border bg-surface-2/70 p-4 text-sm">
             <div className="flex justify-between text-muted-foreground">

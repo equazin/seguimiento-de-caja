@@ -24,6 +24,8 @@ faltante, separado por bloqueante / alto impacto / medio / nice to have.
 - Notas de credito/debito internas desde facturas de venta/compra, con
   relacion al comprobante origen; NC revierte stock y caja cuando se
   confirma con cuenta seleccionada.
+- Editor con busqueda para clientes/proveedores/productos, modo solo
+  lectura en documentos cerrados y vista de relaciones origen/destino.
 - UX: ActionMenu global, RowActionsMenu, EmptyState, sidebar con
   identidad real, errores ARCA parseados, dashboard con chips
   navegables y deltas vs mes anterior, drawer mobile.
@@ -77,13 +79,8 @@ produccion.
 Cosas que cambian la experiencia de usar la app dia a dia. Orden
 sugerido:
 
-4. **Mejoras finas del editor de documento**
-   - Autocomplete con busqueda para contactos/productos (Radix Popover
-     ya esta en deps).
-   - Pulir experiencia read-only para documentos confirmados/emitidos.
-5. **Ajustes finos de notas internas**
-   - Validaciones especificas por tipo de nota.
-   - Vista de relaciones origen/destino en el detalle.
+4. **Ajustes finos de notas internas**
+   - Validaciones avanzadas por tipo de nota y saldo pendiente.
    - La emision fiscal contra ARCA queda para el ultimo paso.
 
 ---

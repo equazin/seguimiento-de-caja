@@ -8,9 +8,9 @@ import {
   DocumentoEditorPanel,
   getDocumentoTitulo,
 } from '@/components/ventas/DocumentoModal'
-import { useDocumento } from '@/hooks/useDocumentos'
+import { useDocumento, useDocumentoRelaciones } from '@/hooks/useDocumentos'
 import { useAuth } from '@/lib/auth'
-import { formatMoney } from '@/lib/formatters'
+import { formatDate, formatMoney } from '@/lib/formatters'
 import { tipoDocumentoLabel } from '@/lib/documentos'
 import type { Documento, TipoOperacion } from '@/db/schema'
 
@@ -24,6 +24,7 @@ export function DocumentoEditor({ tipoOperacion }: DocumentoEditorProps) {
   const { id } = useParams()
   const basePath = tipoOperacion === 'venta' ? '/ventas' : '/compras'
   const documento = useDocumento(id ?? null)
+  const relaciones = useDocumentoRelaciones(id ?? null)
   const isNuevo = !id
 
   function volver() {
@@ -96,6 +97,49 @@ export function DocumentoEditor({ tipoOperacion }: DocumentoEditorProps) {
           </div>
         </div>
       </div>
+
+      {documentoActual && relaciones && relaciones.length > 0 && (
+        <div className="rounded-xl border border-border bg-surface/90 p-4 shadow-xl shadow-black/10 sm:p-5">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Relaciones
+          </p>
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            {relaciones.map(relacion => {
+              const relacionado = relacion.relacionado
+              const href = relacionado
+                ? `${relacionado.tipo_operacion === 'venta' ? '/ventas' : '/compras'}/${relacionado.id}`
+                : basePath
+              return (
+                <button
+                  key={relacion.id}
+                  type="button"
+                  onClick={() => navigate(href)}
+                  className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-left transition-colors hover:bg-surface-3"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      {relacion.direccion === 'origen' ? 'Origen' : 'Destino'}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {relacion.tipo_relacion}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-sm font-semibold text-white">
+                    {relacionado
+                      ? `${tipoDocumentoLabel(relacionado.tipo_documento)} ${relacionado.numero_interno}`
+                      : 'Documento no disponible'}
+                  </div>
+                  {relacionado && (
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {formatDate(relacionado.fecha)} - {formatMoney(relacionado.total, relacionado.moneda)}
+                    </div>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="rounded-xl border border-border bg-surface/90 p-4 shadow-xl shadow-black/10 sm:p-6">
         <DocumentoEditorPanel

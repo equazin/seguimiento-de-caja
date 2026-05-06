@@ -3,6 +3,7 @@ import type {
   ArcaComprobante,
   Documento,
   DocumentoItem,
+  DocumentoRelacion,
   MetodoPago,
   TipoOperacion,
   TipoDocumentoComercial,
@@ -98,6 +99,48 @@ export function useDocumento(documentoId: string | null) {
     },
     [documentoId],
     ['documentos']
+  )
+}
+
+export interface DocumentoRelacionConDocumento extends DocumentoRelacion {
+  direccion: 'origen' | 'destino'
+  relacionado: Documento | null
+}
+
+export function useDocumentoRelaciones(documentoId: string | null) {
+  return useSupabaseQuery(
+    async () => {
+      if (!documentoId) return [] as DocumentoRelacionConDocumento[]
+      const { data: relacionesData, error: relacionesError } = await supabaseAfip
+        .from('documento_relaciones')
+        .select('*')
+        .or(`origen_id.eq.${documentoId},destino_id.eq.${documentoId}`)
+        .order('created_at', { ascending: false })
+      if (relacionesError) throw relacionesError
+
+      const relaciones = (relacionesData ?? []) as DocumentoRelacion[]
+      const ids = [...new Set(relaciones.map(r => r.origen_id === documentoId ? r.destino_id : r.origen_id))]
+      if (ids.length === 0) return []
+
+      const { data: documentosData, error: documentosError } = await supabaseAfip
+        .from('documentos')
+        .select('*')
+        .in('id', ids)
+      if (documentosError) throw documentosError
+
+      const documentosMap = new Map(((documentosData ?? []) as Documento[]).map(d => [d.id, d]))
+      return relaciones.map(relacion => {
+        const direccion = relacion.origen_id === documentoId ? 'destino' : 'origen'
+        const relacionadoId = direccion === 'destino' ? relacion.destino_id : relacion.origen_id
+        return {
+          ...relacion,
+          direccion,
+          relacionado: documentosMap.get(relacionadoId) ?? null,
+        } satisfies DocumentoRelacionConDocumento
+      })
+    },
+    [documentoId],
+    ['documento_relaciones', 'documentos']
   )
 }
 
