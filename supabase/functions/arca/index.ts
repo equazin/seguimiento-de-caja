@@ -397,26 +397,24 @@ async function wsaaLogin(ambiente: Ambiente): Promise<WsaaTicket> {
     </wsaa:loginCms>
   `)
   const xml = await postSoap(URLS[ambiente].wsaa, '', envelope)
-  const loginCmsReturn = getFirstText(parseXml(xml), 'loginCmsReturn')
+  const loginCmsReturn = getFirstText(xml, 'loginCmsReturn')
   if (!loginCmsReturn) throw new Error('WSAA no devolvio loginCmsReturn')
 
   const ticketXml = decodeXml(loginCmsReturn)
-  const ticketDoc = parseXml(ticketXml)
-  const token = getFirstText(ticketDoc, 'token')
-  const sign = getFirstText(ticketDoc, 'sign')
-  const generationTime = getFirstText(ticketDoc, 'generationTime')
-  const expirationTime = getFirstText(ticketDoc, 'expirationTime')
+  const token = getFirstText(ticketXml, 'token')
+  const sign = getFirstText(ticketXml, 'sign')
+  const generationTime = getFirstText(ticketXml, 'generationTime')
+  const expirationTime = getFirstText(ticketXml, 'expirationTime')
   if (!token || !sign || !expirationTime) throw new Error('WSAA devolvio un ticket incompleto')
   return { token, sign, generationTime, expirationTime }
 }
 
 async function wsfeDummy(ambiente: Ambiente) {
   const xml = await postWsfe(ambiente, 'FEDummy', soapEnvelope('<ar:FEDummy xmlns:ar="http://ar.gov.afip.dif.FEV1/"/>'))
-  const doc = parseXml(xml)
   return {
-    appServer: getFirstText(doc, 'AppServer'),
-    dbServer: getFirstText(doc, 'DbServer'),
-    authServer: getFirstText(doc, 'AuthServer'),
+    appServer: getFirstText(xml, 'AppServer'),
+    dbServer: getFirstText(xml, 'DbServer'),
+    authServer: getFirstText(xml, 'AuthServer'),
   }
 }
 
@@ -438,10 +436,9 @@ async function feCompUltimoAutorizado(
       </ar:FECompUltimoAutorizado>
     `)
   )
-  const doc = parseXml(xml)
-  const errors = collectCodeMsg(doc, 'Err')
+  const errors = collectCodeMsg(xml, 'Err')
   if (errors.length) throw new Error(`WSFE FECompUltimoAutorizado rechazo: ${formatCodeMsgs(errors)}`)
-  return Number(getFirstText(doc, 'CbteNro') ?? 0)
+  return Number(getFirstText(xml, 'CbteNro') ?? 0)
 }
 
 async function feCaeSolicitar(client: ReturnType<typeof createClient>, empresa: Empresa, feCaeReqXml: string) {
@@ -456,19 +453,18 @@ async function feCaeSolicitar(client: ReturnType<typeof createClient>, empresa: 
       </ar:FECAESolicitar>
     `)
   )
-  const doc = parseXml(xml)
   return {
-    resultado: getFirstText(doc, 'Resultado'),
-    cae: getFirstText(doc, 'CAE'),
-    caeVencimiento: yyyymmddToDate(getFirstText(doc, 'CAEFchVto')),
-    errores: collectCodeMsg(doc, 'Err'),
-    observaciones: collectCodeMsg(doc, 'Obs'),
+    resultado: getFirstText(xml, 'Resultado'),
+    cae: getFirstText(xml, 'CAE'),
+    caeVencimiento: yyyymmddToDate(getFirstText(xml, 'CAEFchVto')),
+    errores: collectCodeMsg(xml, 'Err'),
+    observaciones: collectCodeMsg(xml, 'Obs'),
     resumen: {
-      resultado: getFirstText(doc, 'Resultado'),
-      cae: getFirstText(doc, 'CAE'),
-      caeVencimiento: yyyymmddToDate(getFirstText(doc, 'CAEFchVto')),
-      cbteDesde: Number(getFirstText(doc, 'CbteDesde') ?? 0),
-      cbteHasta: Number(getFirstText(doc, 'CbteHasta') ?? 0),
+      resultado: getFirstText(xml, 'Resultado'),
+      cae: getFirstText(xml, 'CAE'),
+      caeVencimiento: yyyymmddToDate(getFirstText(xml, 'CAEFchVto')),
+      cbteDesde: Number(getFirstText(xml, 'CbteDesde') ?? 0),
+      cbteHasta: Number(getFirstText(xml, 'CbteHasta') ?? 0),
     },
   }
 }
@@ -587,8 +583,7 @@ async function postSoap(url: string, soapAction: string, envelope: string): Prom
   })
   const text = await response.text()
   if (!response.ok) throw new Error(`SOAP HTTP ${response.status}: ${text.slice(0, 400)}`)
-  const doc = parseXml(text)
-  const fault = getFirstText(doc, 'faultstring')
+  const fault = getFirstText(text, 'faultstring')
   if (fault) throw new Error(fault)
   return text
 }
@@ -693,11 +688,10 @@ function ivaId(alicuota: number): number {
   return id
 }
 
-function collectCodeMsg(doc: Document, tagName: string) {
-  const nodes = Array.from(doc.getElementsByTagName('*')).filter(node => node.localName === tagName)
-  return nodes.map(node => ({
-    code: Number(getFirstText(node, 'Code') ?? 0),
-    msg: getFirstText(node, 'Msg') ?? '',
+function collectCodeMsg(xml: string, tagName: string) {
+  return getElements(xml, tagName).map(nodeXml => ({
+    code: Number(getFirstText(nodeXml, 'Code') ?? 0),
+    msg: getFirstText(nodeXml, 'Msg') ?? '',
   }))
 }
 
@@ -705,17 +699,17 @@ function formatCodeMsgs(items: Array<{ code: number; msg: string }>) {
   return items.map(item => `${item.code} ${item.msg}`.trim()).join('; ')
 }
 
-function getFirstText(root: Document | Element, localName: string): string | null {
-  const nodes = Array.from(root.getElementsByTagName('*'))
-  const node = nodes.find(item => item.localName === localName)
-  return node?.textContent?.trim() || null
+function getFirstText(xml: string, localName: string): string | null {
+  const element = getElements(xml, localName)[0]
+  if (!element) return null
+  const text = element.replace(/^<[^>]+>/, '').replace(/<\/[^>]+>$/, '')
+  return decodeXml(text).trim() || null
 }
 
-function parseXml(xml: string): Document {
-  const doc = new DOMParser().parseFromString(xml, 'text/xml')
-  const parserError = getFirstText(doc, 'parsererror')
-  if (parserError) throw new Error(`XML invalido: ${parserError}`)
-  return doc
+function getElements(xml: string, localName: string): string[] {
+  const escaped = localName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const pattern = new RegExp(`<([\\w.-]+:)?${escaped}\\b[^>]*>[\\s\\S]*?<\\/([\\w.-]+:)?${escaped}>`, 'g')
+  return xml.match(pattern) ?? []
 }
 
 function json(payload: unknown, status = 200): Response {
