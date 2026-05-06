@@ -3,6 +3,9 @@ import { FileSpreadsheet, FileText, TrendingUp, TrendingDown } from 'lucide-reac
 import { useMovimientos } from '@/hooks/useMovimientos'
 import { useCategorias } from '@/hooks/useCategorias'
 import { useCuentas } from '@/hooks/useCuentas'
+import { useClientes, useProductos } from '@/hooks/useCatalogo'
+import { useSupabaseQuery } from '@/hooks/useSupabaseQuery'
+import { supabaseAfip } from '@/db/schema'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -10,6 +13,20 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { exportToExcel, exportToPDF } from '@/lib/exporters'
 import { formatMoney, formatDate, getPrimerDiaMes, getUltimoDiaMes } from '@/lib/formatters'
 import { toast } from 'sonner'
+import type { Cliente, Documento, DocumentoItem, Producto } from '@/db/schema'
+
+type DocumentoReporte = Pick<
+  Documento,
+  'id' | 'tipo_operacion' | 'tipo_documento' | 'estado' | 'cliente_id' | 'fecha' | 'subtotal' | 'iva_total' | 'total' | 'moneda' | 'tipo_cambio'
+>
+
+type DocumentoItemReporte = Pick<
+  DocumentoItem,
+  'documento_id' | 'producto_id' | 'descripcion' | 'cantidad' | 'total'
+>
+
+const TIPOS_REPORTE = ['factura', 'nota_credito', 'nota_debito']
+const ESTADOS_REPORTE = ['confirmado', 'emitido']
 
 export function Reportes() {
   const hoy = new Date()
@@ -20,8 +37,15 @@ export function Reportes() {
   const movimientos = useMovimientos({ fechaDesde, fechaHasta })
   const categorias = useCategorias()
   const cuentas = useCuentas()
+  const clientes = useClientes({ soloActivos: false })
+  const productos = useProductos({ soloActivos: false })
+  const documentos = useDocumentosReporte(fechaDesde, fechaHasta)
+  const documentoIds = useMemo(() => documentos?.map(d => d.id) ?? [], [documentos])
+  const documentoItems = useDocumentoItemsReporte(documentoIds)
 
   const catMap = useMemo(() => new Map((categorias ?? []).map(c => [c.id, c])), [categorias])
+  const clientesMap = useMemo(() => new Map((clientes ?? []).map(c => [c.id, c])), [clientes])
+  const productosMap = useMemo(() => new Map((productos ?? []).map(p => [p.id, p])), [productos])
 
   const resumen = useMemo(() => {
     if (!movimientos) return null
@@ -48,6 +72,22 @@ export function Reportes() {
       porCategoria: [...porCategoria.values()].sort((a, b) => b.total - a.total),
     }
   }, [movimientos, catMap])
+
+  const reporteFiscal = useMemo(() => {
+    if (!documentos || !documentoItems) return null
+
+    const ventas = aggregateIva(documentos, 'venta')
+    const compras = aggregateIva(documentos, 'compra')
+    const clientesRanking = buildClientesRanking(documentos, clientesMap)
+    const productosRanking = buildProductosRanking(documentos, documentoItems, productosMap)
+
+    return {
+      ventas,
+      compras,
+      clientesRanking,
+      productosRanking,
+    }
+  }, [documentos, documentoItems, clientesMap, productosMap])
 
   const titulo = `Bartez Tecnología — Reporte ${fechaDesde} al ${fechaHasta}`
   const periodo = `${formatDate(fechaDesde)} al ${formatDate(fechaHasta)}`
@@ -160,6 +200,44 @@ export function Reportes() {
         </div>
       )}
 
+      {reporteFiscal && (
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>IVA ventas / compras</CardTitle>
+              <span className="text-xs text-muted-foreground">{documentos?.length ?? 0} documentos</span>
+            </CardHeader>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <IvaSummary title="Ventas" data={reporteFiscal.ventas} />
+              <IvaSummary title="Compras" data={reporteFiscal.compras} />
+            </div>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Ranking de clientes</CardTitle>
+            </CardHeader>
+            <RankingTable
+              emptyLabel="Sin ventas confirmadas en el periodo"
+              rows={reporteFiscal.clientesRanking}
+              valueLabel="Total"
+            />
+          </Card>
+
+          <Card className="xl:col-span-2">
+            <CardHeader>
+              <CardTitle>Productos mas vendidos</CardTitle>
+            </CardHeader>
+            <RankingTable
+              emptyLabel="Sin productos vendidos en el periodo"
+              rows={reporteFiscal.productosRanking}
+              valueLabel="Vendido"
+              secondaryLabel="Cantidad"
+            />
+          </Card>
+        </div>
+      )}
+
       {/* Tabla movimientos */}
       <Card>
         <CardHeader>
@@ -255,6 +333,210 @@ export function Reportes() {
           </div>
         </Card>
       )}
+    </div>
+  )
+}
+
+function useDocumentosReporte(fechaDesde: string, fechaHasta: string) {
+  return useSupabaseQuery(
+    async () => {
+      const { data, error } = await supabaseAfip
+        .from('documentos')
+        .select('id,tipo_operacion,tipo_documento,estado,cliente_id,fecha,subtotal,iva_total,total,moneda,tipo_cambio')
+        .gte('fecha', fechaDesde)
+        .lte('fecha', fechaHasta)
+        .in('tipo_documento', TIPOS_REPORTE)
+        .in('estado', ESTADOS_REPORTE)
+      if (error) throw error
+      return (data ?? []) as DocumentoReporte[]
+    },
+    [fechaDesde, fechaHasta],
+    ['documentos']
+  )
+}
+
+function useDocumentoItemsReporte(documentoIds: string[]) {
+  const idsKey = documentoIds.join(',')
+  return useSupabaseQuery(
+    async () => {
+      if (documentoIds.length === 0) return [] as DocumentoItemReporte[]
+      const { data, error } = await supabaseAfip
+        .from('documento_items')
+        .select('documento_id,producto_id,descripcion,cantidad,total')
+        .in('documento_id', documentoIds)
+      if (error) throw error
+      return (data ?? []) as DocumentoItemReporte[]
+    },
+    [idsKey],
+    ['documento_items']
+  )
+}
+
+function aggregateIva(documentos: DocumentoReporte[], tipoOperacion: 'venta' | 'compra') {
+  return documentos
+    .filter(documento => documento.tipo_operacion === tipoOperacion)
+    .reduce(
+      (acc, documento) => {
+        const sign = documentoSign(documento)
+        acc.neto += sign * toArs(documento.subtotal, documento)
+        acc.iva += sign * toArs(documento.iva_total, documento)
+        acc.total += sign * toArs(documento.total, documento)
+        acc.cantidad += 1
+        return acc
+      },
+      { neto: 0, iva: 0, total: 0, cantidad: 0 }
+    )
+}
+
+function buildClientesRanking(
+  documentos: DocumentoReporte[],
+  clientesMap: Map<string, Cliente>
+) {
+  const grouped = new Map<string, { label: string; value: number; secondary: number }>()
+
+  documentos
+    .filter(documento => documento.tipo_operacion === 'venta')
+    .forEach(documento => {
+      const key = documento.cliente_id ?? 'sin-cliente'
+      const cliente = documento.cliente_id ? clientesMap.get(documento.cliente_id) : null
+      const prev = grouped.get(key) ?? {
+        label: cliente?.razon_social ?? 'Consumidor final',
+        value: 0,
+        secondary: 0,
+      }
+      grouped.set(key, {
+        ...prev,
+        value: prev.value + documentoSign(documento) * toArs(documento.total, documento),
+        secondary: prev.secondary + 1,
+      })
+    })
+
+  return [...grouped.values()]
+    .filter(row => row.value > 0)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 8)
+}
+
+function buildProductosRanking(
+  documentos: DocumentoReporte[],
+  items: DocumentoItemReporte[],
+  productosMap: Map<string, Producto>
+) {
+  const documentosMap = new Map(documentos.map(documento => [documento.id, documento]))
+  const grouped = new Map<string, { label: string; value: number; secondary: number }>()
+
+  items.forEach(item => {
+    const documento = documentosMap.get(item.documento_id)
+    if (!documento || documento.tipo_operacion !== 'venta') return
+    const key = item.producto_id ?? item.descripcion
+    const producto = item.producto_id ? productosMap.get(item.producto_id) : null
+    const prev = grouped.get(key) ?? {
+      label: producto?.nombre ?? item.descripcion,
+      value: 0,
+      secondary: 0,
+    }
+    const sign = documentoSign(documento)
+    grouped.set(key, {
+      ...prev,
+      value: prev.value + sign * toArs(item.total, documento),
+      secondary: prev.secondary + sign * Number(item.cantidad),
+    })
+  })
+
+  return [...grouped.values()]
+    .filter(row => row.value > 0)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 10)
+}
+
+function documentoSign(documento: DocumentoReporte): number {
+  return documento.tipo_documento === 'nota_credito' ? -1 : 1
+}
+
+function toArs(value: number, documento: DocumentoReporte): number {
+  const amount = Number(value)
+  if (documento.moneda === 'USD') return amount * Number(documento.tipo_cambio || 1)
+  return amount
+}
+
+function IvaSummary({
+  title,
+  data,
+}: {
+  title: string
+  data: { neto: number; iva: number; total: number; cantidad: number }
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-surface-2 p-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <p className="text-sm font-semibold text-white">{title}</p>
+        <span className="text-xs text-muted-foreground">{data.cantidad} docs</span>
+      </div>
+      <div className="space-y-2 text-sm">
+        <MetricRow label="Neto" value={formatMoney(data.neto)} />
+        <MetricRow label="IVA" value={formatMoney(data.iva)} />
+        <MetricRow label="Total" value={formatMoney(data.total)} strong />
+      </div>
+    </div>
+  )
+}
+
+function MetricRow({
+  label,
+  value,
+  strong = false,
+}: {
+  label: string
+  value: string
+  strong?: boolean
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={strong ? 'font-semibold text-white' : 'text-white'}>{value}</span>
+    </div>
+  )
+}
+
+function RankingTable({
+  rows,
+  emptyLabel,
+  valueLabel,
+  secondaryLabel = 'Docs',
+}: {
+  rows: Array<{ label: string; value: number; secondary: number }>
+  emptyLabel: string
+  valueLabel: string
+  secondaryLabel?: string
+}) {
+  if (rows.length === 0) {
+    return <div className="py-8 text-center text-sm text-muted-foreground">{emptyLabel}</div>
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead className="text-xs uppercase text-muted-foreground">
+          <tr className="border-b border-border">
+            <th className="px-2 py-2 text-left font-medium">Nombre</th>
+            <th className="px-2 py-2 text-right font-medium">{secondaryLabel}</th>
+            <th className="px-2 py-2 text-right font-medium">{valueLabel}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(row => (
+            <tr key={row.label} className="border-b border-border/40">
+              <td className="px-2 py-2 text-white">{row.label}</td>
+              <td className="px-2 py-2 text-right text-muted-foreground">
+                {row.secondary.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
+              </td>
+              <td className="px-2 py-2 text-right font-semibold text-white">
+                {formatMoney(row.value)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }

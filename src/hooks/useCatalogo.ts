@@ -4,6 +4,8 @@ import { notifyDataChanged, useSupabaseQuery } from '@/hooks/useSupabaseQuery'
 import { useAuth } from '@/lib/auth'
 
 type ContactoTabla = 'clientes' | 'proveedores'
+type ContactoImport = Partial<Omit<Cliente, 'id' | 'empresa_id' | 'created_at' | 'updated_at'>>
+type ProductoImport = Partial<Omit<Producto, 'id' | 'empresa_id' | 'created_at' | 'updated_at'>>
 
 interface ListFilters {
   busqueda?: string
@@ -56,6 +58,15 @@ export async function crearCliente(empresaId: string, data: Partial<Cliente>) {
   const { error } = await supabaseAfip
     .from('clientes')
     .insert({ ...data, empresa_id: empresaId })
+  if (error) throw error
+  notifyDataChanged()
+}
+
+export async function importarClientes(empresaId: string, rows: ContactoImport[]) {
+  if (rows.length === 0) return
+  const { error } = await supabaseAfip
+    .from('clientes')
+    .insert(rows.map(row => ({ ...row, empresa_id: empresaId })))
   if (error) throw error
   notifyDataChanged()
 }
@@ -118,6 +129,15 @@ export async function crearProveedor(empresaId: string, data: Partial<Proveedor>
   notifyDataChanged()
 }
 
+export async function importarProveedores(empresaId: string, rows: ContactoImport[]) {
+  if (rows.length === 0) return
+  const { error } = await supabaseAfip
+    .from('proveedores')
+    .insert(rows.map(row => ({ ...row, empresa_id: empresaId })))
+  if (error) throw error
+  notifyDataChanged()
+}
+
 export async function actualizarProveedor(id: string, data: Partial<Proveedor>) {
   const { error } = await supabaseAfip
     .from('proveedores')
@@ -172,6 +192,15 @@ export async function crearProducto(empresaId: string, data: Partial<Producto>) 
   notifyDataChanged()
 }
 
+export async function importarProductos(empresaId: string, rows: ProductoImport[]) {
+  if (rows.length === 0) return
+  const { error } = await supabaseAfip
+    .from('productos')
+    .insert(rows.map(row => ({ ...row, empresa_id: empresaId })))
+  if (error) throw error
+  notifyDataChanged()
+}
+
 export async function actualizarProducto(id: string, data: Partial<Producto>) {
   const { error } = await supabaseAfip
     .from('productos')
@@ -186,4 +215,4 @@ export async function setProductoActivo(id: string, activo: boolean) {
 }
 
 // Util compartido por si se necesita en otro lado
-export type { ContactoTabla }
+export type { ContactoTabla, ContactoImport, ProductoImport }

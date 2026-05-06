@@ -29,6 +29,15 @@ faltante, separado por bloqueante / alto impacto / medio / nice to have.
 - Pagina dedicada de detalle read-only para documentos cerrados:
   `/ventas/:id/detalle` y `/compras/:id/detalle`.
 - Paginacion en Ventas y Compras.
+- Importacion masiva de catalogo desde CSV/Excel para clientes,
+  proveedores y productos.
+- Realtime sobre tablas AFIP via `useSupabaseQuery` y
+  `supabase_realtime`.
+- Atajos de teclado en el editor de documento para guardar borrador,
+  confirmar y agregar items.
+- Reportes adicionales: IVA ventas/compras por periodo, ranking de
+  clientes y productos mas vendidos.
+- Dark/light theme toggle persistente.
 - Validaciones de datos: CUIT/CUIL con digito verificador en contactos y
   empresa emisora, fechas/items/tipo de cambio en documentos, y
   cotizacion USD con fecha de actualizacion.
@@ -85,17 +94,8 @@ produccion.
 
 ## Nice to have
 
-13. Importacion masiva de catalogo desde CSV/Excel.
-14. Realtime sobre tablas AFIP (hoy refresca via `notifyDataChanged()`
-    despues de cada mutacion local; entre navegadores no hay realtime).
-15. Atajos de teclado en el editor de documento (agregar item,
-    confirmar, cerrar).
-16. Reportes adicionales: IVA ventas/compras por periodo, ranking de
-    clientes, productos mas vendidos.
 17. Multi-empresa: el schema y RLS ya lo permiten; falta UI para
     cambiar de empresa activa cuando un usuario tiene varias.
-18. Dark/light theme toggle (hoy dark fijo).
-
 ---
 
 ## Como usarlo

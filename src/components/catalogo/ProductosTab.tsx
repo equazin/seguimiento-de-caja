@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Plus, Edit2, Power, Search, AlertTriangle, Package } from 'lucide-react'
+import { Plus, Edit2, Power, Search, AlertTriangle, Package, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -9,6 +9,7 @@ import { SkeletonTable } from '@/components/ui/Skeleton'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { RowActionsMenu } from '@/components/ui/RowActionsMenu'
 import { ProductoModal } from './ProductoModal'
+import { CatalogoImportModal } from './CatalogoImportModal'
 import { useProductos, setProductoActivo } from '@/hooks/useCatalogo'
 import { formatMoney } from '@/lib/formatters'
 import type { Producto } from '@/db/schema'
@@ -17,6 +18,7 @@ export function ProductosTab() {
   const [busqueda, setBusqueda] = useState('')
   const [soloActivos, setSoloActivos] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [editar, setEditar] = useState<Producto | null>(null)
 
   const filtros = useMemo(() => ({ busqueda, soloActivos }), [busqueda, soloActivos])
@@ -77,6 +79,10 @@ export function ProductosTab() {
             <Button onClick={abrirNuevo}>
               <Plus size={16} />
               Nuevo producto
+            </Button>
+            <Button variant="secondary" onClick={() => setImportOpen(true)}>
+              <Upload size={16} />
+              Importar
             </Button>
           </>
         }
@@ -193,6 +199,11 @@ export function ProductosTab() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         producto={editar}
+      />
+      <CatalogoImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        tipo="producto"
       />
     </div>
   )

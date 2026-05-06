@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Plus, Edit2, Power, Search, Users, Truck } from 'lucide-react'
+import { Plus, Edit2, Power, Search, Users, Truck, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -9,6 +9,7 @@ import { SkeletonTable } from '@/components/ui/Skeleton'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { RowActionsMenu } from '@/components/ui/RowActionsMenu'
 import { ContactoModal } from './ContactoModal'
+import { CatalogoImportModal } from './CatalogoImportModal'
 import {
   useClientes,
   useProveedores,
@@ -35,6 +36,7 @@ export function ContactosTab({ tipo }: ContactosTabProps) {
   const [busqueda, setBusqueda] = useState('')
   const [soloActivos, setSoloActivos] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [editar, setEditar] = useState<ContactoData | null>(null)
 
   const filtros = useMemo(() => ({ busqueda, soloActivos }), [busqueda, soloActivos])
@@ -85,6 +87,10 @@ export function ContactosTab({ tipo }: ContactosTabProps) {
             <Button onClick={abrirNuevo}>
               <Plus size={16} />
               Nuevo {tipo === 'cliente' ? 'cliente' : 'proveedor'}
+            </Button>
+            <Button variant="secondary" onClick={() => setImportOpen(true)}>
+              <Upload size={16} />
+              Importar
             </Button>
           </>
         }
@@ -188,6 +194,11 @@ export function ContactosTab({ tipo }: ContactosTabProps) {
         onClose={() => setModalOpen(false)}
         tipo={tipo}
         contacto={editar}
+      />
+      <CatalogoImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        tipo={tipo}
       />
     </div>
   )

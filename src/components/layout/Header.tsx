@@ -1,6 +1,7 @@
-import { LogOut, Menu } from 'lucide-react'
+import { LogOut, Menu, Moon, Sun } from 'lucide-react'
 import { ActionMenu, type GlobalAction } from '@/components/ui/ActionMenu'
 import { useAuth } from '@/lib/auth'
+import { useTheme } from '@/lib/theme'
 
 interface HeaderProps {
   titulo: string
@@ -15,7 +16,9 @@ function avatarInicial(email: string): string {
 
 export function Header({ titulo, subtitulo, onGlobalAction, onOpenMenu }: HeaderProps) {
   const { session, signOut } = useAuth()
+  const { theme, toggleTheme } = useTheme()
   const email = session?.user.email ?? ''
+  const ThemeIcon = theme === 'dark' ? Sun : Moon
 
   return (
     <header className="flex items-center justify-between gap-3 border-b border-border bg-surface/90 px-4 py-4 backdrop-blur md:px-6">
@@ -37,6 +40,15 @@ export function Header({ titulo, subtitulo, onGlobalAction, onOpenMenu }: Header
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <ActionMenu onAction={onGlobalAction} />
+        <button
+          type="button"
+          onClick={toggleTheme}
+          className="rounded-lg border border-border bg-surface-2 p-2 text-muted-foreground transition-colors hover:text-white"
+          title={theme === 'dark' ? 'Tema claro' : 'Tema oscuro'}
+          aria-label={theme === 'dark' ? 'Tema claro' : 'Tema oscuro'}
+        >
+          <ThemeIcon size={16} />
+        </button>
         <div className="ml-1 flex items-center gap-2 rounded-lg border border-border bg-surface-2/60 py-1 pl-1 pr-2">
           <span
             className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/15 text-xs font-bold text-primary"

@@ -414,8 +414,7 @@ export function DocumentoEditorPanel({
     setForm(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== idx) }))
   }
 
-  async function onSubmit(event: FormEvent<HTMLFormElement>, estadoFinal: EstadoDocumento) {
-    event.preventDefault()
+  async function submitDocumento(estadoFinal: EstadoDocumento) {
     if (!empresa) {
       setError('No hay empresa configurada')
       return
@@ -500,6 +499,11 @@ export function DocumentoEditorPanel({
     }
   }
 
+  async function onSubmit(event: FormEvent<HTMLFormElement>, estadoFinal: EstadoDocumento) {
+    event.preventDefault()
+    await submitDocumento(estadoFinal)
+  }
+
   const editable = !documento || documento.estado === 'borrador'
   const contactoLabel = tipoOperacion === 'venta' ? 'Cliente' : 'Proveedor'
   const contactoEmpty = tipoOperacion === 'venta' ? 'Consumidor final' : 'Sin proveedor'
@@ -507,6 +511,30 @@ export function DocumentoEditorPanel({
   const footerClass = variant === 'modal'
     ? '-mx-6 -mb-5 bg-surface/95 px-6'
     : '-mx-4 -mb-4 bg-background/95 px-4 sm:-mx-6 sm:-mb-6 sm:px-6'
+
+  useEffect(() => {
+    if (!editable || submitting) return
+
+    function onKeyDown(event: KeyboardEvent) {
+      const withModifier = event.ctrlKey || event.metaKey
+      if (!withModifier) return
+
+      const key = event.key.toLowerCase()
+      if (key === 's') {
+        event.preventDefault()
+        void submitDocumento('borrador')
+      } else if (key === 'enter') {
+        event.preventDefault()
+        void submitDocumento('confirmado')
+      } else if (key === 'i') {
+        event.preventDefault()
+        addItem()
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [editable, submitting, form, empresa, tipoOperacion, documento?.id])
 
   return (
       <form className={cn('space-y-5', className)} onSubmit={e => onSubmit(e, form.estado)}>
@@ -798,14 +826,14 @@ export function DocumentoEditorPanel({
             type="button"
             variant="secondary"
             disabled={submitting || !editable}
-            onClick={(e) => onSubmit(e as unknown as FormEvent<HTMLFormElement>, 'borrador')}
+            onClick={() => void submitDocumento('borrador')}
           >
             Guardar borrador
           </Button>
           <Button
             type="button"
             disabled={submitting || !editable}
-            onClick={(e) => onSubmit(e as unknown as FormEvent<HTMLFormElement>, 'confirmado')}
+            onClick={() => void submitDocumento('confirmado')}
           >
             {submitting ? 'Guardando…' : 'Confirmar'}
           </Button>
