@@ -367,6 +367,7 @@ export function DocumentoEditorPanel({
   }, [documento?.tipo_documento])
 
   const totales = useMemo(() => calcularTotales(form.items).totales, [form.items])
+  const esNota = form.tipo_documento === 'nota_credito' || form.tipo_documento === 'nota_debito'
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm(prev => ({ ...prev, [key]: value }))
@@ -541,7 +542,7 @@ export function DocumentoEditorPanel({
               options={contactoOptions}
               placeholder={`Buscar ${contactoLabel.toLowerCase()}...`}
               emptyLabel={contactoEmpty}
-              disabled={!editable}
+              disabled={!editable || esNota}
               onChange={value => update('contacto_id', value)}
             />
             <Input
@@ -563,7 +564,7 @@ export function DocumentoEditorPanel({
               label="Moneda"
               value={form.moneda}
               onChange={e => update('moneda', e.target.value as 'ARS' | 'USD')}
-              disabled={!editable}
+              disabled={!editable || esNota}
             >
               <option value="ARS">ARS</option>
               <option value="USD">USD</option>
@@ -576,7 +577,7 @@ export function DocumentoEditorPanel({
                 min="0"
                 value={form.tipo_cambio}
                 onChange={e => update('tipo_cambio', e.target.value)}
-                disabled={!editable}
+                disabled={!editable || esNota}
                 hint={cotizacionUsdUpdatedAt
                   ? `Cotizacion actualizada ${formatDateTime(cotizacionUsdUpdatedAt)}`
                   : 'Cotizacion sin fecha de actualizacion'}

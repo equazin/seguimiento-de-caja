@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
 import { PageToolbar } from '@/components/ui/PageToolbar'
+import { Pagination } from '@/components/ui/Pagination'
 import { SkeletonTable } from '@/components/ui/Skeleton'
 import { ConfirmDialog } from '@/components/ui/Dialog'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -40,6 +41,8 @@ const ESTADOS_LABEL: Record<EstadoDocumento, string> = {
   remitido_parcial: 'Remitido parcial',
 }
 
+const POR_PAGINA = 25
+
 function badgeForEstado(estado: EstadoDocumento) {
   if (estado === 'borrador') return <Badge variant="borrador">{ESTADOS_LABEL[estado]}</Badge>
   if (estado === 'anulado') return <Badge variant="anulado">{ESTADOS_LABEL[estado]}</Badge>
@@ -52,6 +55,7 @@ export function Compras() {
   const [tipoDocumento, setTipoDocumento] = useState<TipoDocumentoComercial | ''>('')
   const [estado, setEstado] = useState<EstadoDocumento | ''>('')
   const [busqueda, setBusqueda] = useState('')
+  const [pagina, setPagina] = useState(1)
   const [confirmDelete, setConfirmDelete] = useState<Documento | null>(null)
 
   const filtros = useMemo(
@@ -81,6 +85,9 @@ export function Compras() {
 
   const loading = documentos === undefined
   const items = documentos ?? []
+  const totalPaginas = Math.ceil(items.length / POR_PAGINA)
+  const paginaActual = totalPaginas > 0 ? Math.min(pagina, totalPaginas) : 1
+  const paginated = items.slice((paginaActual - 1) * POR_PAGINA, paginaActual * POR_PAGINA)
   const sinFiltros = !tipoDocumento && !estado && !busqueda
   const sinDocumentos = !loading && items.length === 0 && sinFiltros
   const resumen = {
@@ -96,7 +103,7 @@ export function Compras() {
   }
 
   function abrirEditar(d: Documento) {
-    navigate(`/compras/${d.id}`)
+    navigate(d.estado === 'borrador' ? `/compras/${d.id}` : `/compras/${d.id}/detalle`)
   }
 
   async function confirmar(d: Documento) {
@@ -215,14 +222,20 @@ export function Compras() {
             label="Buscar"
             placeholder="N° interno u observaciones..."
             value={busqueda}
-            onChange={e => setBusqueda(e.target.value)}
+            onChange={e => {
+              setBusqueda(e.target.value)
+              setPagina(1)
+            }}
             className="pl-9"
           />
         </div>
         <Select
           label="Tipo"
           value={tipoDocumento}
-          onChange={e => setTipoDocumento(e.target.value as TipoDocumentoComercial | '')}
+          onChange={e => {
+            setTipoDocumento(e.target.value as TipoDocumentoComercial | '')
+            setPagina(1)
+          }}
         >
           <option value="">Todos</option>
           <option value="pedido">Pedido</option>
@@ -234,7 +247,10 @@ export function Compras() {
         <Select
           label="Estado"
           value={estado}
-          onChange={e => setEstado(e.target.value as EstadoDocumento | '')}
+          onChange={e => {
+            setEstado(e.target.value as EstadoDocumento | '')
+            setPagina(1)
+          }}
         >
           <option value="">Todos</option>
           <option value="borrador">Borrador</option>
@@ -270,7 +286,7 @@ export function Compras() {
                 </tr>
               </thead>
               <tbody>
-                {items.map(d => {
+                {paginated.map(d => {
                   const proveedor = d.proveedor_id ? proveedoresMap.get(d.proveedor_id) : null
                   const destinoConversion = siguienteTipoConvertible(d.tipo_documento)
                   return (
@@ -314,6 +330,12 @@ export function Compras() {
                 })}
               </tbody>
             </table>
+            <Pagination
+              page={paginaActual}
+              totalPages={totalPaginas}
+              totalItems={items.length}
+              onPageChange={setPagina}
+            />
           </div>
         )}
       </div>

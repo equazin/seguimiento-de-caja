@@ -24,11 +24,17 @@ faltante, separado por bloqueante / alto impacto / medio / nice to have.
 - Notas de credito/debito internas desde facturas de venta/compra, con
   relacion al comprobante origen; NC revierte stock y caja cuando se
   confirma con cuenta seleccionada.
-- Editor con busqueda para clientes/proveedores/productos, modo solo
-  lectura en documentos cerrados y vista de relaciones origen/destino.
+- Editor con busqueda para clientes/proveedores/productos y vista de
+  relaciones origen/destino.
+- Pagina dedicada de detalle read-only para documentos cerrados:
+  `/ventas/:id/detalle` y `/compras/:id/detalle`.
+- Paginacion en Ventas y Compras.
 - Validaciones de datos: CUIT/CUIL con digito verificador en contactos y
   empresa emisora, fechas/items/tipo de cambio en documentos, y
   cotizacion USD con fecha de actualizacion.
+- Validaciones finas de notas internas: origen obligatorio en factura,
+  relacion correcta por tipo, bloqueo de datos heredados y control de
+  saldo pendiente para notas de credito.
 - UX: ActionMenu global, RowActionsMenu, EmptyState, sidebar con
   identidad real, errores ARCA parseados, dashboard con chips
   navegables y deltas vs mes anterior, drawer mobile.
@@ -74,25 +80,6 @@ desarrollo del circuito interno.
 Despues de esto: probar `dummy` -> `login` -> `ultimo` -> `emitir` en
 homologacion con una factura C de prueba, y recien despues pasar a
 produccion.
-
----
-
-## Alto impacto (proxima sesion)
-
-Cosas que cambian la experiencia de usar la app dia a dia. Orden
-sugerido:
-
-4. **Ajustes finos de notas internas**
-   - Validaciones avanzadas por tipo de nota y saldo pendiente.
-   - La emision fiscal contra ARCA queda para el ultimo paso.
-
----
-
-## Medio impacto
-
-9. **Pagina dedicada para ver detalle de un documento** (read-only
-    para confirmados/emitidos), separada del editor.
-10. **Paginacion en Ventas y Compras** (Movimientos ya la tiene).
 
 ---
 
