@@ -404,6 +404,111 @@ export async function convertirDocumento(id: string): Promise<Documento> {
   return destino
 }
 
+export async function crearNotaDesdeDocumento(
+  origenId: string,
+  tipoNota: 'nota_credito' | 'nota_debito'
+): Promise<Documento> {
+  const { data: docData, error: docError } = await supabaseAfip
+    .from('documentos')
+    .select('*')
+    .eq('id', origenId)
+    .single()
+  if (docError) throw docError
+
+  const origen = docData as Documento
+  if (origen.tipo_documento !== 'factura') {
+    throw new Error('Las notas se generan desde una factura')
+  }
+  if (origen.estado === 'borrador' || origen.estado === 'anulado') {
+    throw new Error('La factura debe estar confirmada o emitida')
+  }
+
+  const { data: itemsData, error: itemsError } = await supabaseAfip
+    .from('documento_items')
+    .select('*')
+    .eq('documento_id', origen.id)
+    .order('orden', { ascending: true })
+  if (itemsError) throw itemsError
+
+  const items = (itemsData ?? []) as DocumentoItem[]
+  if (items.length === 0) {
+    throw new Error('No se puede crear una nota sin items')
+  }
+
+  const numero = await siguienteNumeroInterno(
+    origen.empresa_id,
+    origen.tipo_operacion,
+    tipoNota
+  )
+  const label = tipoNota === 'nota_credito' ? 'Nota de credito' : 'Nota de debito'
+  const observaciones = [
+    `${label} generada desde ${origen.numero_interno}.`,
+    origen.observaciones,
+  ].filter(Boolean).join('\n')
+
+  const insertResult = await supabaseAfip
+    .from('documentos')
+    .insert({
+      empresa_id: origen.empresa_id,
+      tipo_operacion: origen.tipo_operacion,
+      tipo_documento: tipoNota,
+      estado: 'borrador',
+      numero_interno: numero,
+      punto_venta_id: origen.punto_venta_id,
+      cliente_id: origen.cliente_id,
+      proveedor_id: origen.proveedor_id,
+      fecha: todayStr(),
+      fecha_vencimiento: origen.fecha_vencimiento,
+      moneda: origen.moneda,
+      tipo_cambio: origen.tipo_cambio,
+      subtotal: origen.subtotal,
+      iva_total: origen.iva_total,
+      exento: origen.exento,
+      no_gravado: origen.no_gravado,
+      percepciones: origen.percepciones,
+      total: origen.total,
+      observaciones,
+      cuenta_id: null,
+      movimiento_id: null,
+    })
+    .select('*')
+    .single()
+  if (insertResult.error) throw insertResult.error
+
+  const nota = insertResult.data as Documento
+  const itemsPayload = items.map(it => ({
+    documento_id: nota.id,
+    producto_id: it.producto_id,
+    orden: it.orden,
+    codigo: it.codigo,
+    descripcion: it.descripcion,
+    cantidad: it.cantidad,
+    unidad_medida: it.unidad_medida,
+    precio_unitario: it.precio_unitario,
+    bonificacion: it.bonificacion,
+    alicuota_iva: it.alicuota_iva,
+    iva_importe: it.iva_importe,
+    subtotal: it.subtotal,
+    total: it.total,
+  }))
+  const { error: insertItemsError } = await supabaseAfip
+    .from('documento_items')
+    .insert(itemsPayload)
+  if (insertItemsError) throw insertItemsError
+
+  const { error: relacionError } = await supabaseAfip
+    .from('documento_relaciones')
+    .insert({
+      origen_id: origen.id,
+      destino_id: nota.id,
+      tipo_relacion: tipoNota === 'nota_credito' ? 'anulacion' : 'ajuste',
+    })
+  if (relacionError) throw relacionError
+
+  notifyDataChanged()
+  return nota
+}
+
 export async function emitirDocumentoArca(id: string): Promise<unknown> {
   const { data, error } = await supabaseAfip.functions.invoke('arca', {
     body: { action: 'emitir', documentoId: id },
@@ -426,8 +531,15 @@ export async function emitirDocumentoArca(id: string): Promise<unknown> {
 }
 
 function mueveStock(documento: Documento): boolean {
-  if (!['factura', 'remito'].includes(documento.tipo_documento)) return false
+  if (!['factura', 'remito', 'nota_credito'].includes(documento.tipo_documento)) return false
   return ['confirmado', 'emitido'].includes(documento.estado)
+}
+
+function tipoStockDocumento(documento: Documento): 'ingreso' | 'egreso' {
+  if (documento.tipo_documento === 'nota_credito') {
+    return documento.tipo_operacion === 'venta' ? 'ingreso' : 'egreso'
+  }
+  return documento.tipo_operacion === 'venta' ? 'egreso' : 'ingreso'
 }
 
 function estadoOrigenDespuesDeConversion(
@@ -501,7 +613,7 @@ async function syncStockDocumento(documentoId: string): Promise<void> {
       .map(p => p.id)
   )
 
-  const tipo = documento.tipo_operacion === 'venta' ? 'egreso' : 'ingreso'
+  const tipo = tipoStockDocumento(documento)
   const movimientos = items
     .filter(it => it.producto_id && stockeables.has(it.producto_id))
     .map(it => {
@@ -527,9 +639,26 @@ async function syncStockDocumento(documentoId: string): Promise<void> {
 }
 
 function mueveCaja(documento: Documento): boolean {
-  return documento.tipo_documento === 'factura'
+  return ['factura', 'nota_credito', 'nota_debito'].includes(documento.tipo_documento)
     && ['confirmado', 'emitido'].includes(documento.estado)
     && !!documento.cuenta_id
+}
+
+function tipoCajaDocumento(documento: Documento): TipoMovimiento {
+  if (documento.tipo_documento === 'nota_credito') {
+    return documento.tipo_operacion === 'venta' ? 'egreso' : 'ingreso'
+  }
+  return documento.tipo_operacion === 'venta' ? 'ingreso' : 'egreso'
+}
+
+function accionCajaDocumento(documento: Documento): string {
+  if (documento.tipo_documento === 'nota_credito') {
+    return documento.tipo_operacion === 'venta' ? 'Devolucion' : 'Credito'
+  }
+  if (documento.tipo_documento === 'nota_debito') {
+    return documento.tipo_operacion === 'venta' ? 'Cobro adicional' : 'Pago adicional'
+  }
+  return documento.tipo_operacion === 'venta' ? 'Cobro' : 'Pago'
 }
 
 async function eliminarCajaDocumento(documentoId: string): Promise<void> {
@@ -574,14 +703,14 @@ async function syncCajaDocumento(
     return
   }
 
-  const tipoMovimiento: TipoMovimiento = documento.tipo_operacion === 'venta' ? 'ingreso' : 'egreso'
+  const tipoMovimiento = tipoCajaDocumento(documento)
   const categoriaId = await getCategoriaCajaId(tipoMovimiento)
   const contacto = await getContactoDocumento(documento)
   const montoArs = documento.moneda === 'USD'
     ? roundMoney(Number(documento.total) * Number(documento.tipo_cambio || 1))
     : roundMoney(Number(documento.total))
   const montoUsd = documento.moneda === 'USD' ? roundMoney(Number(documento.total)) : null
-  const descripcion = `${documento.tipo_operacion === 'venta' ? 'Cobro' : 'Pago'} ${documento.tipo_documento} ${documento.numero_interno}`
+  const descripcion = `${accionCajaDocumento(documento)} ${documento.tipo_documento} ${documento.numero_interno}`
   const movimientoPayload = {
     fecha: documento.fecha,
     tipo: tipoMovimiento,

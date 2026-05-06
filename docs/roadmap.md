@@ -21,6 +21,9 @@ faltante, separado por bloqueante / alto impacto / medio / nice to have.
   limpian al anular/volver a borrador/eliminar.
 - Conversion entre documentos operativos: presupuesto -> pedido ->
   remito -> factura, copiando items y registrando `documento_relaciones`.
+- Notas de credito/debito internas desde facturas de venta/compra, con
+  relacion al comprobante origen; NC revierte stock y caja cuando se
+  confirma con cuenta seleccionada.
 - UX: ActionMenu global, RowActionsMenu, EmptyState, sidebar con
   identidad real, errores ARCA parseados, dashboard con chips
   navegables y deltas vs mes anterior, drawer mobile.
@@ -78,12 +81,10 @@ sugerido:
    - Autocomplete con busqueda para contactos/productos (Radix Popover
      ya esta en deps).
    - Pulir experiencia read-only para documentos confirmados/emitidos.
-5. **Notas de credito y debito de venta**
-   - UI para crear NC/ND internas referenciando una factura.
+5. **Ajustes finos de notas internas**
+   - Validaciones especificas por tipo de nota.
+   - Vista de relaciones origen/destino en el detalle.
    - La emision fiscal contra ARCA queda para el ultimo paso.
-   - Reversion de stock en NC.
-6. **Compras: notas de credito/debito**
-   - Carga manual + reversion de stock cuando corresponda.
 
 ---
 

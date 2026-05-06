@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { Plus, Edit2, Trash2, Search, FileText, CheckCircle2, XCircle, Download, RotateCcw, Truck, ArrowRightLeft } from 'lucide-react'
+import { Plus, Edit2, Trash2, Search, FileText, CheckCircle2, XCircle, Download, RotateCcw, Truck, ArrowRightLeft, FileMinus, FilePlus } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
@@ -15,6 +15,7 @@ import {
   useDocumentos,
   cambiarEstadoDocumento,
   convertirDocumento,
+  crearNotaDesdeDocumento,
   eliminarDocumento,
   siguienteTipoConvertible,
 } from '@/hooks/useDocumentos'
@@ -148,6 +149,17 @@ export function Compras() {
     }
   }
 
+  async function crearNota(d: Documento, tipoNota: 'nota_credito' | 'nota_debito') {
+    try {
+      const nota = await crearNotaDesdeDocumento(d.id, tipoNota)
+      toast.success(`${tipoDocumentoLabel(nota.tipo_documento)} creada`)
+      navigate(`/compras/${nota.id}`)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'No se pudo crear la nota'
+      toast.error(message)
+    }
+  }
+
   async function confirmarEliminacion() {
     if (!confirmDelete) return
     try {
@@ -216,6 +228,8 @@ export function Compras() {
           <option value="pedido">Pedido</option>
           <option value="remito">Remito</option>
           <option value="factura">Factura</option>
+          <option value="nota_credito">Nota de credito</option>
+          <option value="nota_debito">Nota de debito</option>
         </Select>
         <Select
           label="Estado"
@@ -287,6 +301,8 @@ export function Compras() {
                             onAnular: () => void anular(d),
                             onReactivar: () => void reactivar(d),
                             onConvertir: () => void convertir(d),
+                            onNotaCredito: () => void crearNota(d, 'nota_credito'),
+                            onNotaDebito: () => void crearNota(d, 'nota_debito'),
                             destinoConversionLabel: destinoConversion ? tipoDocumentoLabel(destinoConversion) : null,
                             onEliminar: () => setConfirmDelete(d),
                             onDescargarPdf: () => void descargarPdf(d),
@@ -322,6 +338,8 @@ interface AccionesCompraOpts {
   onAnular: () => void
   onReactivar: () => void
   onConvertir: () => void
+  onNotaCredito: () => void
+  onNotaDebito: () => void
   destinoConversionLabel: string | null
   onEliminar: () => void
   onDescargarPdf: () => void
@@ -334,6 +352,8 @@ function accionesCompra({
   onAnular,
   onReactivar,
   onConvertir,
+  onNotaCredito,
+  onNotaDebito,
   destinoConversionLabel,
   onEliminar,
   onDescargarPdf,
@@ -342,6 +362,7 @@ function accionesCompra({
   const esConfirmado = documento.estado === 'confirmado'
   const esAnulado = documento.estado === 'anulado'
   const puedeConvertir = !!destinoConversionLabel && !esBorrador && !esAnulado
+  const puedeCrearNotas = documento.tipo_documento === 'factura' && !esBorrador && !esAnulado
 
   return [
     { id: 'ver', label: esBorrador ? 'Editar' : 'Ver detalle', icon: Edit2, onClick: onEditar },
@@ -351,6 +372,20 @@ function accionesCompra({
       icon: ArrowRightLeft,
       hidden: !puedeConvertir,
       onClick: onConvertir,
+    },
+    {
+      id: 'nota_credito',
+      label: 'Nota de credito',
+      icon: FileMinus,
+      hidden: !puedeCrearNotas,
+      onClick: onNotaCredito,
+    },
+    {
+      id: 'nota_debito',
+      label: 'Nota de debito',
+      icon: FilePlus,
+      hidden: !puedeCrearNotas,
+      onClick: onNotaDebito,
     },
     { id: 'pdf', label: 'Descargar PDF', icon: Download, hidden: esBorrador, onClick: onDescargarPdf },
     {

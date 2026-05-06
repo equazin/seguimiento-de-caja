@@ -25,14 +25,18 @@ import type {
   TipoOperacion,
 } from '@/db/schema'
 
-type TipoDocumentoForm = 'presupuesto' | 'pedido' | 'remito' | 'factura'
+type TipoDocumentoForm = 'presupuesto' | 'pedido' | 'remito' | 'factura' | 'nota_credito' | 'nota_debito'
 
 const TIPOS_DOCUMENTO: { value: TipoDocumentoForm; label: string }[] = [
   { value: 'presupuesto', label: 'Presupuesto' },
   { value: 'pedido', label: 'Pedido' },
   { value: 'remito', label: 'Remito' },
   { value: 'factura', label: 'Factura' },
+  { value: 'nota_credito', label: 'Nota de credito' },
+  { value: 'nota_debito', label: 'Nota de debito' },
 ]
+
+const TIPOS_CON_CAJA = new Set<TipoDocumentoForm>(['factura', 'nota_credito', 'nota_debito'])
 
 interface DocumentoModalProps {
   open: boolean
@@ -91,6 +95,16 @@ function emptyItem(): ItemDraft {
     bonificacion: 0,
     alicuota_iva: 21,
   }
+}
+
+function tituloCaja(tipoDocumento: TipoDocumentoForm, tipoOperacion: TipoOperacion): string {
+  if (tipoDocumento === 'nota_credito') {
+    return tipoOperacion === 'venta' ? 'Devolucion al cliente' : 'Credito del proveedor'
+  }
+  if (tipoDocumento === 'nota_debito') {
+    return tipoOperacion === 'venta' ? 'Cobro adicional' : 'Pago adicional'
+  }
+  return tipoOperacion === 'venta' ? 'Cobro de factura' : 'Pago de factura'
 }
 
 export function DocumentoModal({
@@ -266,7 +280,7 @@ export function DocumentoEditorPanel({
         moneda: form.moneda,
         tipoCambio: Number.isFinite(tipoCambio) && tipoCambio > 0 ? tipoCambio : 1,
         observaciones: form.observaciones.trim() || null,
-        cuentaId: form.tipo_documento === 'factura' ? form.cuenta_id || null : null,
+        cuentaId: TIPOS_CON_CAJA.has(form.tipo_documento) ? form.cuenta_id || null : null,
         metodoPago: form.metodo_pago,
         estado: estadoFinal,
         items: form.items,
@@ -371,13 +385,13 @@ export function DocumentoEditorPanel({
           </div>
         </div>
 
-        {form.tipo_documento === 'factura' && (
+        {TIPOS_CON_CAJA.has(form.tipo_documento) && (
           <div className="rounded-xl border border-border bg-surface-2/70 p-4">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Caja</p>
                 <h3 className="text-sm font-semibold text-white">
-                  {tipoOperacion === 'venta' ? 'Cobro de factura' : 'Pago de factura'}
+                  {tituloCaja(form.tipo_documento, tipoOperacion)}
                 </h3>
               </div>
               {documento?.movimiento_id && (
