@@ -236,6 +236,7 @@ async function emitirDocumento(
     tipoComprobante
   )
   const numeroComprobante = ultimo + 1
+  await clearPreviousArcaAttempt(context.serviceClient, doc.id)
   const request = buildFeCaeRequest({
     empresa,
     documento: doc,
@@ -294,6 +295,18 @@ async function emitirDocumento(
     errores: response.errores,
     observaciones: response.observaciones,
   }
+}
+
+async function clearPreviousArcaAttempt(
+  client: ReturnType<typeof createClient>,
+  documentoId: string
+): Promise<void> {
+  const { error } = await client
+    .from('arca_comprobantes')
+    .delete()
+    .eq('documento_id', documentoId)
+    .is('cae', null)
+  if (error) throw error
 }
 
 async function getEmpresa(client: ReturnType<typeof createClient>, empresaId: string): Promise<Empresa> {

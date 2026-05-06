@@ -238,6 +238,11 @@ export function Ventas() {
                             CAE {arca.cae}
                           </div>
                         )}
+                        {arca?.resultado === 'R' && (
+                          <div className="text-[11px] text-danger font-sans mt-1">
+                            Rechazado ARCA
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">
                         {tipoDocumentoLabel(d.tipo_documento)}
@@ -268,6 +273,15 @@ export function Ventas() {
                               title="Descargar PDF"
                             >
                               <Download size={15} />
+                            </button>
+                          )}
+                          {arca?.resultado === 'R' && d.estado === 'confirmado' && (
+                            <button
+                              onClick={() => void emitir(d)}
+                              className="p-1.5 rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-success transition-colors"
+                              title="Reintentar ARCA"
+                            >
+                              <Send size={15} />
                             </button>
                           )}
                           {d.estado === 'borrador' && (

@@ -252,6 +252,18 @@ export async function emitirDocumentoArca(id: string): Promise<unknown> {
     body: { action: 'emitir', documentoId: id },
   })
   if (error) throw error
+  const result = data as {
+    resultado?: string
+    errores?: Array<{ code?: number; msg?: string }>
+    observaciones?: Array<{ code?: number; msg?: string }>
+  } | null
+  if (result?.resultado && result.resultado !== 'A') {
+    const detalles = [...(result.errores ?? []), ...(result.observaciones ?? [])]
+      .map(item => `${item.code ?? ''} ${item.msg ?? ''}`.trim())
+      .filter(Boolean)
+      .join('; ')
+    throw new Error(detalles || `ARCA devolvió resultado ${result.resultado}`)
+  }
   notifyDataChanged()
   return data
 }
