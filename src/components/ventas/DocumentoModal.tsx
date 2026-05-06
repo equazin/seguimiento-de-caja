@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { Dialog } from '@/components/ui/Dialog'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
+import { getConfiguracion } from '@/db/queries'
 import { useAuth } from '@/lib/auth'
 import { useClientes, useProductos, useProveedores } from '@/hooks/useCatalogo'
 import { useCuentas } from '@/hooks/useCuentas'
@@ -15,7 +16,7 @@ import {
 import { useMovimiento } from '@/hooks/useMovimientos'
 import { calcularTotales, type ItemDraft } from '@/lib/documentos'
 import { METODOS_PAGO } from '@/lib/constants'
-import { cn, formatMoney, todayStr } from '@/lib/formatters'
+import { cn, formatDateTime, formatMoney, todayStr } from '@/lib/formatters'
 import type {
   Documento,
   TipoDocumentoComercial,
@@ -274,6 +275,21 @@ export function DocumentoEditorPanel({
   const [form, setForm] = useState<FormState>(emptyForm)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [cotizacionUsdUpdatedAt, setCotizacionUsdUpdatedAt] = useState<string | null>(null)
+
+  useEffect(() => {
+    Promise.all([
+      getConfiguracion('cotizacion_usd'),
+      getConfiguracion('cotizacion_usd_updated_at'),
+    ]).then(([cotizacion, updatedAt]) => {
+      if (!documento && cotizacion) {
+        setForm(prev => prev.tipo_cambio === '1' ? { ...prev, tipo_cambio: cotizacion } : prev)
+      }
+      if (updatedAt) setCotizacionUsdUpdatedAt(updatedAt)
+    }).catch(error => {
+      console.error('No se pudo cargar cotizacion USD', error)
+    })
+  }, [documento?.id])
 
   useEffect(() => {
     if (documento) {
@@ -407,8 +423,33 @@ export function DocumentoEditorPanel({
       setError('Agregá al menos un item')
       return
     }
+    if (!form.fecha) {
+      setError('La fecha es obligatoria')
+      return
+    }
+    if (form.fecha_vencimiento && form.fecha_vencimiento < form.fecha) {
+      setError('El vencimiento no puede ser anterior a la fecha')
+      return
+    }
     if (form.items.some(it => !it.descripcion.trim())) {
       setError('Todos los items necesitan descripción')
+      return
+    }
+    if (form.items.some(it => Number(it.cantidad) <= 0)) {
+      setError('Todos los items necesitan cantidad mayor a cero')
+      return
+    }
+    if (form.items.some(it => Number(it.precio_unitario) < 0)) {
+      setError('Los precios no pueden ser negativos')
+      return
+    }
+    if (form.items.some(it => Number(it.bonificacion) < 0 || Number(it.bonificacion) > 100)) {
+      setError('Las bonificaciones deben estar entre 0 y 100')
+      return
+    }
+    const tipoCambio = Number(form.tipo_cambio.replace(',', '.'))
+    if (form.moneda === 'USD' && (!Number.isFinite(tipoCambio) || tipoCambio <= 0)) {
+      setError('El tipo de cambio debe ser mayor a cero')
       return
     }
     if ((form.tipo_documento === 'nota_credito' || form.tipo_documento === 'nota_debito') && !form.contacto_id) {
@@ -422,7 +463,6 @@ export function DocumentoEditorPanel({
     setError(null)
     setSubmitting(true)
     try {
-      const tipoCambio = Number(form.tipo_cambio.replace(',', '.'))
       const payload = {
         clienteId: tipoOperacion === 'venta' ? form.contacto_id || null : null,
         proveedorId: tipoOperacion === 'compra' ? form.contacto_id || null : null,
@@ -537,6 +577,9 @@ export function DocumentoEditorPanel({
                 value={form.tipo_cambio}
                 onChange={e => update('tipo_cambio', e.target.value)}
                 disabled={!editable}
+                hint={cotizacionUsdUpdatedAt
+                  ? `Cotizacion actualizada ${formatDateTime(cotizacionUsdUpdatedAt)}`
+                  : 'Cotizacion sin fecha de actualizacion'}
               />
             )}
           </div>

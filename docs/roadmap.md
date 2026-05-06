@@ -26,6 +26,9 @@ faltante, separado por bloqueante / alto impacto / medio / nice to have.
   confirma con cuenta seleccionada.
 - Editor con busqueda para clientes/proveedores/productos, modo solo
   lectura en documentos cerrados y vista de relaciones origen/destino.
+- Validaciones de datos: CUIT/CUIL con digito verificador en contactos y
+  empresa emisora, fechas/items/tipo de cambio en documentos, y
+  cotizacion USD con fecha de actualizacion.
 - UX: ActionMenu global, RowActionsMenu, EmptyState, sidebar con
   identidad real, errores ARCA parseados, dashboard con chips
   navegables y deltas vs mes anterior, drawer mobile.
@@ -87,13 +90,9 @@ sugerido:
 
 ## Medio impacto
 
-9. **Validador de CUIT con digito verificador** en alta de
-    clientes/proveedores y en empresa emisora.
-10. **Cotizacion USD con timestamp**: mostrar "actualizada hace X dias"
-    para no operar con valores obsoletos.
-11. **Pagina dedicada para ver detalle de un documento** (read-only
+9. **Pagina dedicada para ver detalle de un documento** (read-only
     para confirmados/emitidos), separada del editor.
-12. **Paginacion en Ventas y Compras** (Movimientos ya la tiene).
+10. **Paginacion en Ventas y Compras** (Movimientos ya la tiene).
 
 ---
 

@@ -9,6 +9,7 @@ import { supabaseAfip } from '@/db/schema'
 import { useSupabaseQuery } from '@/hooks/useSupabaseQuery'
 import { useAuth } from '@/lib/auth'
 import { formatDate, formatDateTime } from '@/lib/formatters'
+import { isValidCuit } from '@/lib/validators'
 import type { ArcaComprobante, PuntoVenta } from '@/db/schema'
 
 export function Fiscal() {
@@ -124,7 +125,12 @@ export function Fiscal() {
               </div>
               <div>
                 <dt className="text-muted-foreground">CUIT</dt>
-                <dd className="text-white font-mono">{empresa.cuit}</dd>
+                <dd className="flex items-center gap-2 text-white font-mono">
+                  {empresa.cuit}
+                  <Badge variant={isValidCuit(empresa.cuit) ? 'activo' : 'anulado'}>
+                    {isValidCuit(empresa.cuit) ? 'Valido' : 'Invalido'}
+                  </Badge>
+                </dd>
               </div>
               <div>
                 <dt className="text-muted-foreground">Condición IVA</dt>

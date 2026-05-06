@@ -8,12 +8,14 @@ import { Button } from '@/components/ui/Button'
 import { Dialog, ConfirmDialog } from '@/components/ui/Dialog'
 import { Badge } from '@/components/ui/Badge'
 import { COLORES_DISPONIBLES, ICONOS_DISPONIBLES } from '@/lib/constants'
+import { formatDateTime } from '@/lib/formatters'
 import { toast } from 'sonner'
 import type { Categoria, TipoMovimiento } from '@/db/schema'
 
 export function Configuracion() {
   const [nombreNegocio, setNombreNegocio] = useState('Bartez Tecnología')
   const [cotizacionUSD, setCotizacionUSD] = useState('1280')
+  const [cotizacionUpdatedAt, setCotizacionUpdatedAt] = useState<string | null>(null)
   const [loadingConfig, setLoadingConfig] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
 
@@ -29,19 +31,24 @@ export function Configuracion() {
     Promise.all([
       getConfiguracion('nombre_negocio'),
       getConfiguracion('cotizacion_usd'),
-    ]).then(([nombre, cotiz]) => {
+      getConfiguracion('cotizacion_usd_updated_at'),
+    ]).then(([nombre, cotiz, cotizUpdatedAt]) => {
       if (nombre) setNombreNegocio(nombre)
       if (cotiz) setCotizacionUSD(cotiz)
+      if (cotizUpdatedAt) setCotizacionUpdatedAt(cotizUpdatedAt)
     })
   }, [])
 
   const guardarConfig = async () => {
     setLoadingConfig(true)
     try {
+      const cotizacionTimestamp = new Date().toISOString()
       await Promise.all([
         setConfiguracion('nombre_negocio', nombreNegocio),
         setConfiguracion('cotizacion_usd', cotizacionUSD),
+        setConfiguracion('cotizacion_usd_updated_at', cotizacionTimestamp),
       ])
+      setCotizacionUpdatedAt(cotizacionTimestamp)
       toast.success('Configuración guardada')
     } catch {
       toast.error('Error al guardar')
@@ -142,7 +149,9 @@ export function Configuracion() {
             type="number"
             value={cotizacionUSD}
             onChange={e => setCotizacionUSD(e.target.value)}
-            hint="Valor en ARS por 1 USD"
+            hint={cotizacionUpdatedAt
+              ? `Valor en ARS por 1 USD. Actualizada ${formatDateTime(cotizacionUpdatedAt)}`
+              : 'Valor en ARS por 1 USD. Sin fecha de actualizacion'}
           />
           <div className="flex justify-end">
             <Button onClick={guardarConfig} loading={loadingConfig}>

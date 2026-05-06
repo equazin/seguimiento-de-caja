@@ -4,6 +4,7 @@ import { Dialog } from '@/components/ui/Dialog'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/lib/auth'
+import { formatCuit, isValidCuit, onlyDigits, shouldValidateCuit } from '@/lib/validators'
 import {
   crearCliente,
   actualizarCliente,
@@ -99,11 +100,15 @@ function fromContacto(c: ContactoData): FormState {
 }
 
 function toPayload(form: FormState): Partial<ContactoData> {
+  const numeroDocumento = shouldValidateCuit(form.tipo_documento)
+    ? onlyDigits(form.numero_documento)
+    : form.numero_documento.trim()
+
   return {
     razon_social: form.razon_social.trim(),
     nombre_fantasia: form.nombre_fantasia.trim() || null,
     tipo_documento: form.tipo_documento,
-    numero_documento: form.numero_documento.trim() || null,
+    numero_documento: numeroDocumento || null,
     condicion_iva: form.condicion_iva,
     email: form.email.trim() || null,
     telefono: form.telefono.trim() || null,
@@ -140,6 +145,10 @@ export function ContactoModal({ open, onClose, tipo, contacto }: ContactoModalPr
     }
     if (!form.razon_social.trim()) {
       setError('La razón social es obligatoria')
+      return
+    }
+    if (shouldValidateCuit(form.tipo_documento) && form.numero_documento.trim() && !isValidCuit(form.numero_documento)) {
+      setError(`${form.tipo_documento} invalido: revisa el digito verificador`)
       return
     }
     setError(null)
@@ -202,7 +211,11 @@ export function ContactoModal({ open, onClose, tipo, contacto }: ContactoModalPr
           <Input
             label="Número documento"
             value={form.numero_documento}
-            onChange={e => update('numero_documento', e.target.value)}
+            onChange={e => update(
+              'numero_documento',
+              shouldValidateCuit(form.tipo_documento) ? formatCuit(e.target.value) : e.target.value
+            )}
+            hint={shouldValidateCuit(form.tipo_documento) ? 'Se valida el digito verificador' : undefined}
           />
           <Select
             label="Condición IVA"
