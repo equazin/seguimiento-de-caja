@@ -5,7 +5,7 @@ import { Dialog } from '@/components/ui/Dialog'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/lib/auth'
-import { useClientes, useProductos } from '@/hooks/useCatalogo'
+import { useClientes, useProductos, useProveedores } from '@/hooks/useCatalogo'
 import {
   crearDocumento,
   actualizarDocumento,
@@ -18,11 +18,12 @@ import type {
   TipoDocumentoComercial,
   EstadoDocumento,
   Producto,
+  TipoOperacion,
 } from '@/db/schema'
 
-type TipoVenta = 'presupuesto' | 'pedido' | 'remito' | 'factura'
+type TipoDocumentoForm = 'presupuesto' | 'pedido' | 'remito' | 'factura'
 
-const TIPOS_VENTA: { value: TipoVenta; label: string }[] = [
+const TIPOS_DOCUMENTO: { value: TipoDocumentoForm; label: string }[] = [
   { value: 'presupuesto', label: 'Presupuesto' },
   { value: 'pedido', label: 'Pedido' },
   { value: 'remito', label: 'Remito' },
@@ -33,11 +34,12 @@ interface DocumentoModalProps {
   open: boolean
   onClose: () => void
   documento: Documento | null
+  tipoOperacion?: TipoOperacion
 }
 
 interface FormState {
-  tipo_documento: TipoVenta
-  cliente_id: string
+  tipo_documento: TipoDocumentoForm
+  contacto_id: string
   fecha: string
   fecha_vencimiento: string
   moneda: 'ARS' | 'USD'
@@ -50,7 +52,7 @@ interface FormState {
 function emptyForm(): FormState {
   return {
     tipo_documento: 'presupuesto',
-    cliente_id: '',
+    contacto_id: '',
     fecha: todayStr(),
     fecha_vencimiento: '',
     moneda: 'ARS',
@@ -74,11 +76,18 @@ function emptyItem(): ItemDraft {
   }
 }
 
-export function DocumentoModal({ open, onClose, documento }: DocumentoModalProps) {
+export function DocumentoModal({
+  open,
+  onClose,
+  documento,
+  tipoOperacion = 'venta',
+}: DocumentoModalProps) {
   const { empresa } = useAuth()
   const clientes = useClientes({ soloActivos: true })
+  const proveedores = useProveedores({ soloActivos: true })
   const productos = useProductos({ soloActivos: true })
   const documentoItems = useDocumentoItems(documento?.id ?? null)
+  const contactos = tipoOperacion === 'venta' ? clientes : proveedores
 
   const [form, setForm] = useState<FormState>(emptyForm)
   const [submitting, setSubmitting] = useState(false)
@@ -88,8 +97,8 @@ export function DocumentoModal({ open, onClose, documento }: DocumentoModalProps
     if (!open) return
     if (documento) {
       setForm({
-        tipo_documento: documento.tipo_documento as TipoVenta,
-        cliente_id: documento.cliente_id ?? '',
+        tipo_documento: documento.tipo_documento as TipoDocumentoForm,
+        contacto_id: documento.cliente_id ?? documento.proveedor_id ?? '',
         fecha: documento.fecha,
         fecha_vencimiento: documento.fecha_vencimiento ?? '',
         moneda: documento.moneda,
@@ -193,8 +202,8 @@ export function DocumentoModal({ open, onClose, documento }: DocumentoModalProps
     try {
       const tipoCambio = Number(form.tipo_cambio.replace(',', '.'))
       const payload = {
-        clienteId: form.cliente_id || null,
-        proveedorId: null,
+        clienteId: tipoOperacion === 'venta' ? form.contacto_id || null : null,
+        proveedorId: tipoOperacion === 'compra' ? form.contacto_id || null : null,
         fecha: form.fecha,
         fechaVencimiento: form.fecha_vencimiento || null,
         moneda: form.moneda,
@@ -209,7 +218,7 @@ export function DocumentoModal({ open, onClose, documento }: DocumentoModalProps
       } else {
         await crearDocumento({
           empresaId: empresa.id,
-          tipoOperacion: 'venta',
+          tipoOperacion,
           tipoDocumento: form.tipo_documento as TipoDocumentoComercial,
           ...payload,
         })
@@ -228,7 +237,9 @@ export function DocumentoModal({ open, onClose, documento }: DocumentoModalProps
   const editable = !documento || documento.estado === 'borrador'
   const titulo = documento
     ? `Editar ${documento.tipo_documento} ${documento.numero_interno}`
-    : 'Nuevo documento de venta'
+    : `Nuevo documento de ${tipoOperacion === 'venta' ? 'venta' : 'compra'}`
+  const contactoLabel = tipoOperacion === 'venta' ? 'Cliente' : 'Proveedor'
+  const contactoEmpty = tipoOperacion === 'venta' ? 'Consumidor final' : 'Sin proveedor'
 
   return (
     <Dialog open={open} onClose={onClose} title={titulo} size="xl">
@@ -237,20 +248,20 @@ export function DocumentoModal({ open, onClose, documento }: DocumentoModalProps
           <Select
             label="Tipo"
             value={form.tipo_documento}
-            onChange={e => update('tipo_documento', e.target.value as TipoVenta)}
+            onChange={e => update('tipo_documento', e.target.value as TipoDocumentoForm)}
             disabled={!!documento}
           >
-            {TIPOS_VENTA.map(t => (
+            {TIPOS_DOCUMENTO.map(t => (
               <option key={t.value} value={t.value}>{t.label}</option>
             ))}
           </Select>
           <Select
-            label="Cliente"
-            value={form.cliente_id}
-            onChange={e => update('cliente_id', e.target.value)}
+            label={contactoLabel}
+            value={form.contacto_id}
+            onChange={e => update('contacto_id', e.target.value)}
           >
-            <option value="">— Consumidor final —</option>
-            {(clientes ?? []).map(c => (
+            <option value="">— {contactoEmpty} —</option>
+            {(contactos ?? []).map(c => (
               <option key={c.id} value={c.id}>
                 {c.razon_social}
               </option>

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Plus, Edit2, Trash2, Search, FileText, CheckCircle2, XCircle } from 'lucide-react'
+import { Plus, Edit2, Trash2, Search, FileText, CheckCircle2, XCircle, Download, Send } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
@@ -10,12 +10,15 @@ import { DocumentoModal } from '@/components/ventas/DocumentoModal'
 import { useClientes } from '@/hooks/useCatalogo'
 import {
   useDocumentos,
+  useArcaComprobantes,
   cambiarEstadoDocumento,
   eliminarDocumento,
+  emitirDocumentoArca,
 } from '@/hooks/useDocumentos'
 import { useAuth } from '@/lib/auth'
 import { formatMoney, formatDate } from '@/lib/formatters'
 import { tipoDocumentoLabel } from '@/lib/documentos'
+import { descargarDocumentoPdf } from '@/lib/facturaPdf'
 import type {
   Documento,
   TipoDocumentoComercial,
@@ -59,11 +62,16 @@ export function Ventas() {
   )
 
   const documentos = useDocumentos(filtros)
+  const arcaComprobantes = useArcaComprobantes()
   const clientes = useClientes({ soloActivos: false })
 
   const clientesMap = useMemo(
     () => new Map((clientes ?? []).map(c => [c.id, c])),
     [clientes]
+  )
+  const arcaMap = useMemo(
+    () => new Map((arcaComprobantes ?? []).map(c => [c.documento_id, c])),
+    [arcaComprobantes]
   )
 
   if (!empresa) {
@@ -103,6 +111,35 @@ export function Ventas() {
       toast.success('Vuelto a borrador')
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'No se pudo reactivar'
+      toast.error(message)
+    }
+  }
+
+  async function confirmar(d: Documento) {
+    try {
+      await cambiarEstadoDocumento(d.id, 'confirmado')
+      toast.success('Confirmado')
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'No se pudo confirmar'
+      toast.error(message)
+    }
+  }
+
+  async function emitir(d: Documento) {
+    try {
+      await emitirDocumentoArca(d.id)
+      toast.success('Comprobante emitido')
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'No se pudo emitir'
+      toast.error(message)
+    }
+  }
+
+  async function descargarPdf(d: Documento) {
+    try {
+      await descargarDocumentoPdf(d.id)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'No se pudo generar el PDF'
       toast.error(message)
     }
   }
@@ -191,10 +228,16 @@ export function Ventas() {
               <tbody>
                 {items.map(d => {
                   const cliente = d.cliente_id ? clientesMap.get(d.cliente_id) : null
+                  const arca = arcaMap.get(d.id)
                   return (
                     <tr key={d.id} className="border-t border-border hover:bg-surface-2/40">
                       <td className="px-4 py-3 text-white font-mono text-xs">
-                        {d.numero_interno}
+                        <div>{d.numero_interno}</div>
+                        {arca?.cae && (
+                          <div className="text-[11px] text-muted-foreground font-sans mt-1">
+                            CAE {arca.cae}
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">
                         {tipoDocumentoLabel(d.tipo_documento)}
@@ -218,10 +261,19 @@ export function Ventas() {
                           >
                             <Edit2 size={15} />
                           </button>
+                          {(d.estado === 'emitido' || arca?.cae) && (
+                            <button
+                              onClick={() => void descargarPdf(d)}
+                              className="p-1.5 rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-white transition-colors"
+                              title="Descargar PDF"
+                            >
+                              <Download size={15} />
+                            </button>
+                          )}
                           {d.estado === 'borrador' && (
                             <>
                               <button
-                                onClick={() => void cambiarEstadoDocumento(d.id, 'confirmado').then(() => toast.success('Confirmado'))}
+                                onClick={() => void confirmar(d)}
                                 className="p-1.5 rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-success transition-colors"
                                 title="Confirmar"
                               >
@@ -237,13 +289,24 @@ export function Ventas() {
                             </>
                           )}
                           {d.estado === 'confirmado' && (
-                            <button
-                              onClick={() => void anular(d)}
-                              className="p-1.5 rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-danger transition-colors"
-                              title="Anular"
-                            >
-                              <XCircle size={15} />
-                            </button>
+                            <>
+                              {d.tipo_documento === 'factura' && (
+                                <button
+                                  onClick={() => void emitir(d)}
+                                  className="p-1.5 rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-success transition-colors"
+                                  title="Emitir en ARCA"
+                                >
+                                  <Send size={15} />
+                                </button>
+                              )}
+                              <button
+                                onClick={() => void anular(d)}
+                                className="p-1.5 rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-danger transition-colors"
+                                title="Anular"
+                              >
+                                <XCircle size={15} />
+                              </button>
+                            </>
                           )}
                           {d.estado === 'anulado' && (
                             <button
@@ -269,6 +332,7 @@ export function Ventas() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         documento={editar}
+        tipoOperacion="venta"
       />
 
       <ConfirmDialog

@@ -1,5 +1,6 @@
 import { supabaseAfip } from '@/db/schema'
 import type {
+  ArcaComprobante,
   Documento,
   DocumentoItem,
   TipoOperacion,
@@ -79,6 +80,25 @@ export function useDocumentoItems(documentoId: string | null) {
   )
 }
 
+export function useArcaComprobantes() {
+  const { empresa } = useAuth()
+  const empresaId = empresa?.id
+
+  return useSupabaseQuery(
+    async () => {
+      if (!empresaId) return [] as ArcaComprobante[]
+      const { data, error } = await supabaseAfip
+        .from('arca_comprobantes')
+        .select('*')
+        .eq('empresa_id', empresaId)
+      if (error) throw error
+      return (data ?? []) as ArcaComprobante[]
+    },
+    [empresaId],
+    ['arca_comprobantes']
+  )
+}
+
 interface CrearDocumentoInput {
   empresaId: string
   tipoOperacion: TipoOperacion
@@ -140,6 +160,7 @@ export async function crearDocumento(input: CrearDocumentoInput): Promise<Docume
     if (itemsError) throw itemsError
   }
 
+  await syncStockDocumento(documento.id)
   notifyDataChanged()
   return documento
 }
@@ -200,6 +221,7 @@ export async function actualizarDocumento(input: ActualizarDocumentoInput): Prom
     if (itemsError) throw itemsError
   }
 
+  await syncStockDocumento(input.id)
   notifyDataChanged()
 }
 
@@ -212,13 +234,140 @@ export async function cambiarEstadoDocumento(
     .update({ estado })
     .eq('id', id)
   if (error) throw error
+  await syncStockDocumento(id)
   notifyDataChanged()
 }
 
 export async function eliminarDocumento(id: string): Promise<void> {
+  await eliminarStockDocumento(id)
   // Borrar items primero (cascade tambien lo hace, pero por las dudas)
   await supabaseAfip.from('documento_items').delete().eq('documento_id', id)
   const { error } = await supabaseAfip.from('documentos').delete().eq('id', id)
   if (error) throw error
   notifyDataChanged()
+}
+
+export async function emitirDocumentoArca(id: string): Promise<unknown> {
+  const { data, error } = await supabaseAfip.functions.invoke('arca', {
+    body: { action: 'emitir', documentoId: id },
+  })
+  if (error) throw error
+  notifyDataChanged()
+  return data
+}
+
+function mueveStock(documento: Documento): boolean {
+  if (!['factura', 'remito'].includes(documento.tipo_documento)) return false
+  return ['confirmado', 'emitido'].includes(documento.estado)
+}
+
+async function eliminarStockDocumento(documentoId: string): Promise<Map<string, number>> {
+  const { data: existentes, error: selectError } = await supabaseAfip
+    .from('stock_movimientos')
+    .select('producto_id,tipo,cantidad')
+    .eq('documento_id', documentoId)
+  if (selectError) throw selectError
+
+  const deltas = new Map<string, number>()
+  for (const mov of (existentes ?? []) as Array<{ producto_id: string; tipo: string; cantidad: number }>) {
+    const signo = mov.tipo === 'ingreso' ? -1 : mov.tipo === 'egreso' ? 1 : -1
+    deltas.set(mov.producto_id, (deltas.get(mov.producto_id) ?? 0) + signo * Number(mov.cantidad))
+  }
+
+  const { error } = await supabaseAfip
+    .from('stock_movimientos')
+    .delete()
+    .eq('documento_id', documentoId)
+  if (error) throw error
+
+  return deltas
+}
+
+async function syncStockDocumento(documentoId: string): Promise<void> {
+  const { data: docData, error: docError } = await supabaseAfip
+    .from('documentos')
+    .select('*')
+    .eq('id', documentoId)
+    .single()
+  if (docError) throw docError
+  const documento = docData as Documento
+
+  const deltas = await eliminarStockDocumento(documentoId)
+  if (!mueveStock(documento)) {
+    await ajustarStockProductos(deltas)
+    return
+  }
+
+  const { data: itemsData, error: itemsError } = await supabaseAfip
+    .from('documento_items')
+    .select('producto_id,cantidad')
+    .eq('documento_id', documentoId)
+    .not('producto_id', 'is', null)
+  if (itemsError) throw itemsError
+
+  const items = (itemsData ?? []) as Array<{ producto_id: string | null; cantidad: number }>
+  const productoIds = [...new Set(items.map(it => it.producto_id).filter(Boolean) as string[])]
+  if (productoIds.length === 0) {
+    await ajustarStockProductos(deltas)
+    return
+  }
+
+  const { data: productosData, error: productosError } = await supabaseAfip
+    .from('productos')
+    .select('id,stockeable')
+    .in('id', productoIds)
+  if (productosError) throw productosError
+
+  const stockeables = new Set(
+    ((productosData ?? []) as Array<{ id: string; stockeable: boolean }>)
+      .filter(p => p.stockeable)
+      .map(p => p.id)
+  )
+
+  const tipo = documento.tipo_operacion === 'venta' ? 'egreso' : 'ingreso'
+  const movimientos = items
+    .filter(it => it.producto_id && stockeables.has(it.producto_id))
+    .map(it => {
+      const signo = tipo === 'ingreso' ? 1 : -1
+      const productoId = it.producto_id as string
+      deltas.set(productoId, (deltas.get(productoId) ?? 0) + signo * Number(it.cantidad))
+      return {
+        empresa_id: documento.empresa_id,
+        producto_id: productoId,
+        documento_id: documento.id,
+        tipo,
+        cantidad: Number(it.cantidad),
+        motivo: `${documento.tipo_operacion} ${documento.tipo_documento} ${documento.numero_interno}`,
+      }
+    })
+
+  if (movimientos.length > 0) {
+    const { error } = await supabaseAfip.from('stock_movimientos').insert(movimientos)
+    if (error) throw error
+  }
+
+  await ajustarStockProductos(deltas)
+}
+
+async function ajustarStockProductos(deltas: Map<string, number>): Promise<void> {
+  const ids = [...deltas.keys()].filter(productoId => (deltas.get(productoId) ?? 0) !== 0)
+  await Promise.all(
+    ids.map(async productoId => {
+      const { data, error } = await supabaseAfip
+        .from('productos')
+        .select('stock_actual')
+        .eq('id', productoId)
+        .single()
+      if (error) throw error
+
+      const stockActual = Number((data as { stock_actual: number }).stock_actual)
+      const stock = stockActual + (deltas.get(productoId) ?? 0)
+
+      const { error: updateError } = await supabaseAfip
+        .from('productos')
+        .update({ stock_actual: stock })
+        .eq('id', productoId)
+      if (updateError) throw updateError
+    })
+  )
 }
