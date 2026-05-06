@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { Plus, Edit2, Trash2, Search, FileText, CheckCircle2, XCircle, Download, Send, RotateCcw } from 'lucide-react'
+import { Plus, Edit2, Trash2, Search, FileText, CheckCircle2, XCircle, Download, Send, RotateCcw, ArrowRightLeft } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
@@ -8,14 +9,15 @@ import { PageToolbar } from '@/components/ui/PageToolbar'
 import { SkeletonTable } from '@/components/ui/Skeleton'
 import { ConfirmDialog } from '@/components/ui/Dialog'
 import { RowActionsMenu, type RowAction } from '@/components/ui/RowActionsMenu'
-import { DocumentoModal } from '@/components/ventas/DocumentoModal'
 import { useClientes } from '@/hooks/useCatalogo'
 import {
   useDocumentos,
   useArcaComprobantes,
   cambiarEstadoDocumento,
+  convertirDocumento,
   eliminarDocumento,
   emitirDocumentoArca,
+  siguienteTipoConvertible,
 } from '@/hooks/useDocumentos'
 import { useAuth } from '@/lib/auth'
 import { formatMoney, formatDate } from '@/lib/formatters'
@@ -47,11 +49,10 @@ function badgeForEstado(estado: EstadoDocumento) {
 
 export function Ventas() {
   const { empresa } = useAuth()
+  const navigate = useNavigate()
   const [tipoDocumento, setTipoDocumento] = useState<TipoDocumentoComercial | ''>('')
   const [estado, setEstado] = useState<EstadoDocumento | ''>('')
   const [busqueda, setBusqueda] = useState('')
-  const [modalOpen, setModalOpen] = useState(false)
-  const [editar, setEditar] = useState<Documento | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<Documento | null>(null)
 
   const filtros = useMemo(
@@ -96,13 +97,11 @@ export function Ventas() {
   }
 
   function abrirNuevo() {
-    setEditar(null)
-    setModalOpen(true)
+    navigate('/ventas/nuevo')
   }
 
   function abrirEditar(d: Documento) {
-    setEditar(d)
-    setModalOpen(true)
+    navigate(`/ventas/${d.id}`)
   }
 
   async function anular(d: Documento) {
@@ -141,6 +140,17 @@ export function Ventas() {
       toast.success('Comprobante emitido')
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'No se pudo emitir'
+      toast.error(message)
+    }
+  }
+
+  async function convertir(d: Documento) {
+    try {
+      const destino = await convertirDocumento(d.id)
+      toast.success(`Convertido a ${tipoDocumentoLabel(destino.tipo_documento)}`)
+      navigate(`/ventas/${destino.id}`)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'No se pudo convertir'
       toast.error(message)
     }
   }
@@ -247,6 +257,7 @@ export function Ventas() {
                 {items.map(d => {
                   const cliente = d.cliente_id ? clientesMap.get(d.cliente_id) : null
                   const arca = arcaMap.get(d.id)
+                  const destinoConversion = siguienteTipoConvertible(d.tipo_documento)
                   return (
                     <tr key={d.id} className="border-t border-border transition-colors hover:bg-surface-2/60">
                       <td className="px-4 py-3 text-white font-mono text-xs">
@@ -289,6 +300,8 @@ export function Ventas() {
                             onConfirmar: () => void confirmar(d),
                             onEliminar: () => setConfirmDelete(d),
                             onEmitir: () => void emitir(d),
+                            onConvertir: () => void convertir(d),
+                            destinoConversionLabel: destinoConversion ? tipoDocumentoLabel(destinoConversion) : null,
                             onAnular: () => void anular(d),
                             onReactivar: () => void reactivar(d),
                             onDescargarPdf: () => void descargarPdf(d),
@@ -303,13 +316,6 @@ export function Ventas() {
           </div>
         )}
       </div>
-
-      <DocumentoModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        documento={editar}
-        tipoOperacion="venta"
-      />
 
       <ConfirmDialog
         open={!!confirmDelete}
@@ -332,6 +338,8 @@ interface AccionesDocumentoOpts {
   onConfirmar: () => void
   onEliminar: () => void
   onEmitir: () => void
+  onConvertir: () => void
+  destinoConversionLabel: string | null
   onAnular: () => void
   onReactivar: () => void
   onDescargarPdf: () => void
@@ -345,6 +353,8 @@ function accionesDocumento({
   onConfirmar,
   onEliminar,
   onEmitir,
+  onConvertir,
+  destinoConversionLabel,
   onAnular,
   onReactivar,
   onDescargarPdf,
@@ -353,6 +363,7 @@ function accionesDocumento({
   const esConfirmado = documento.estado === 'confirmado'
   const esAnulado = documento.estado === 'anulado'
   const esEmitido = documento.estado === 'emitido'
+  const puedeConvertir = !!destinoConversionLabel && !esBorrador && !esAnulado
 
   return [
     {
@@ -360,6 +371,13 @@ function accionesDocumento({
       label: esBorrador ? 'Editar' : 'Ver detalle',
       icon: Edit2,
       onClick: onEditar,
+    },
+    {
+      id: 'convertir',
+      label: destinoConversionLabel ? `Convertir a ${destinoConversionLabel}` : 'Convertir',
+      icon: ArrowRightLeft,
+      hidden: !puedeConvertir,
+      onClick: onConvertir,
     },
     {
       id: 'pdf',

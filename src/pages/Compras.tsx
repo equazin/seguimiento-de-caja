@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { Plus, Edit2, Trash2, Search, FileText, CheckCircle2, XCircle, Download, RotateCcw, Truck } from 'lucide-react'
+import { Plus, Edit2, Trash2, Search, FileText, CheckCircle2, XCircle, Download, RotateCcw, Truck, ArrowRightLeft } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
@@ -9,12 +10,13 @@ import { SkeletonTable } from '@/components/ui/Skeleton'
 import { ConfirmDialog } from '@/components/ui/Dialog'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { RowActionsMenu, type RowAction } from '@/components/ui/RowActionsMenu'
-import { DocumentoModal } from '@/components/ventas/DocumentoModal'
 import { useProveedores } from '@/hooks/useCatalogo'
 import {
   useDocumentos,
   cambiarEstadoDocumento,
+  convertirDocumento,
   eliminarDocumento,
+  siguienteTipoConvertible,
 } from '@/hooks/useDocumentos'
 import { useAuth } from '@/lib/auth'
 import { formatMoney, formatDate } from '@/lib/formatters'
@@ -45,11 +47,10 @@ function badgeForEstado(estado: EstadoDocumento) {
 
 export function Compras() {
   const { empresa } = useAuth()
+  const navigate = useNavigate()
   const [tipoDocumento, setTipoDocumento] = useState<TipoDocumentoComercial | ''>('')
   const [estado, setEstado] = useState<EstadoDocumento | ''>('')
   const [busqueda, setBusqueda] = useState('')
-  const [modalOpen, setModalOpen] = useState(false)
-  const [editar, setEditar] = useState<Documento | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<Documento | null>(null)
 
   const filtros = useMemo(
@@ -90,13 +91,11 @@ export function Compras() {
   }
 
   function abrirNuevo() {
-    setEditar(null)
-    setModalOpen(true)
+    navigate('/compras/nuevo')
   }
 
   function abrirEditar(d: Documento) {
-    setEditar(d)
-    setModalOpen(true)
+    navigate(`/compras/${d.id}`)
   }
 
   async function confirmar(d: Documento) {
@@ -138,6 +137,17 @@ export function Compras() {
     }
   }
 
+  async function convertir(d: Documento) {
+    try {
+      const destino = await convertirDocumento(d.id)
+      toast.success(`Convertido a ${tipoDocumentoLabel(destino.tipo_documento)}`)
+      navigate(`/compras/${destino.id}`)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'No se pudo convertir'
+      toast.error(message)
+    }
+  }
+
   async function confirmarEliminacion() {
     if (!confirmDelete) return
     try {
@@ -164,12 +174,6 @@ export function Compras() {
             </Button>
           }
           hint="Tip: cargá primero el proveedor en Catálogo para autocompletar los datos."
-        />
-        <DocumentoModal
-          open={modalOpen}
-          onClose={() => setModalOpen(false)}
-          documento={editar}
-          tipoOperacion="compra"
         />
       </div>
     )
@@ -254,6 +258,7 @@ export function Compras() {
               <tbody>
                 {items.map(d => {
                   const proveedor = d.proveedor_id ? proveedoresMap.get(d.proveedor_id) : null
+                  const destinoConversion = siguienteTipoConvertible(d.tipo_documento)
                   return (
                     <tr key={d.id} className="border-t border-border transition-colors hover:bg-surface-2/60">
                       <td className="px-4 py-3 text-white font-mono text-xs">
@@ -281,6 +286,8 @@ export function Compras() {
                             onConfirmar: () => void confirmar(d),
                             onAnular: () => void anular(d),
                             onReactivar: () => void reactivar(d),
+                            onConvertir: () => void convertir(d),
+                            destinoConversionLabel: destinoConversion ? tipoDocumentoLabel(destinoConversion) : null,
                             onEliminar: () => setConfirmDelete(d),
                             onDescargarPdf: () => void descargarPdf(d),
                           })}
@@ -294,13 +301,6 @@ export function Compras() {
           </div>
         )}
       </div>
-
-      <DocumentoModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        documento={editar}
-        tipoOperacion="compra"
-      />
 
       <ConfirmDialog
         open={!!confirmDelete}
@@ -321,6 +321,8 @@ interface AccionesCompraOpts {
   onConfirmar: () => void
   onAnular: () => void
   onReactivar: () => void
+  onConvertir: () => void
+  destinoConversionLabel: string | null
   onEliminar: () => void
   onDescargarPdf: () => void
 }
@@ -331,15 +333,25 @@ function accionesCompra({
   onConfirmar,
   onAnular,
   onReactivar,
+  onConvertir,
+  destinoConversionLabel,
   onEliminar,
   onDescargarPdf,
 }: AccionesCompraOpts): RowAction[] {
   const esBorrador = documento.estado === 'borrador'
   const esConfirmado = documento.estado === 'confirmado'
   const esAnulado = documento.estado === 'anulado'
+  const puedeConvertir = !!destinoConversionLabel && !esBorrador && !esAnulado
 
   return [
     { id: 'ver', label: esBorrador ? 'Editar' : 'Ver detalle', icon: Edit2, onClick: onEditar },
+    {
+      id: 'convertir',
+      label: destinoConversionLabel ? `Convertir a ${destinoConversionLabel}` : 'Convertir',
+      icon: ArrowRightLeft,
+      hidden: !puedeConvertir,
+      onClick: onConvertir,
+    },
     { id: 'pdf', label: 'Descargar PDF', icon: Download, hidden: esBorrador, onClick: onDescargarPdf },
     {
       id: 'confirmar',

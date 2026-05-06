@@ -1,11 +1,13 @@
-import { supabaseAfip } from '@/db/schema'
+import { supabase, supabaseAfip } from '@/db/schema'
 import type {
   ArcaComprobante,
   Documento,
   DocumentoItem,
+  MetodoPago,
   TipoOperacion,
   TipoDocumentoComercial,
   EstadoDocumento,
+  TipoMovimiento,
 } from '@/db/schema'
 import { notifyDataChanged, useSupabaseQuery } from '@/hooks/useSupabaseQuery'
 import { useAuth } from '@/lib/auth'
@@ -15,6 +17,8 @@ import {
   siguienteNumeroInterno,
   type ItemDraft,
 } from '@/lib/documentos'
+import { todayStr } from '@/lib/formatters'
+import { v4 as uuidv4 } from 'uuid'
 
 export interface DocumentoFiltros {
   tipoOperacion: TipoOperacion
@@ -80,6 +84,23 @@ export function useDocumentoItems(documentoId: string | null) {
   )
 }
 
+export function useDocumento(documentoId: string | null) {
+  return useSupabaseQuery(
+    async () => {
+      if (!documentoId) return null
+      const { data, error } = await supabaseAfip
+        .from('documentos')
+        .select('*')
+        .eq('id', documentoId)
+        .maybeSingle()
+      if (error) throw error
+      return (data ?? null) as Documento | null
+    },
+    [documentoId],
+    ['documentos']
+  )
+}
+
 export function useArcaComprobantes() {
   const { empresa } = useAuth()
   const empresaId = empresa?.id
@@ -110,6 +131,8 @@ interface CrearDocumentoInput {
   moneda: 'ARS' | 'USD'
   tipoCambio: number
   observaciones: string | null
+  cuentaId: string | null
+  metodoPago: MetodoPago
   estado: EstadoDocumento
   items: ItemDraft[]
 }
@@ -143,6 +166,7 @@ export async function crearDocumento(input: CrearDocumentoInput): Promise<Docume
       percepciones: totales.percepciones,
       total: totales.total,
       observaciones: input.observaciones,
+      cuenta_id: input.cuentaId,
     })
     .select('*')
     .single()
@@ -161,6 +185,7 @@ export async function crearDocumento(input: CrearDocumentoInput): Promise<Docume
   }
 
   await syncStockDocumento(documento.id)
+  await syncCajaDocumento(documento.id, input.metodoPago)
   notifyDataChanged()
   return documento
 }
@@ -174,6 +199,8 @@ interface ActualizarDocumentoInput {
   moneda: 'ARS' | 'USD'
   tipoCambio: number
   observaciones: string | null
+  cuentaId: string | null
+  metodoPago: MetodoPago
   estado: EstadoDocumento
   items: ItemDraft[]
 }
@@ -197,6 +224,7 @@ export async function actualizarDocumento(input: ActualizarDocumentoInput): Prom
       percepciones: totales.percepciones,
       total: totales.total,
       observaciones: input.observaciones,
+      cuenta_id: input.cuentaId,
       estado: input.estado,
     })
     .eq('id', input.id)
@@ -222,6 +250,7 @@ export async function actualizarDocumento(input: ActualizarDocumentoInput): Prom
   }
 
   await syncStockDocumento(input.id)
+  await syncCajaDocumento(input.id, input.metodoPago)
   notifyDataChanged()
 }
 
@@ -235,16 +264,144 @@ export async function cambiarEstadoDocumento(
     .eq('id', id)
   if (error) throw error
   await syncStockDocumento(id)
+  await syncCajaDocumento(id)
   notifyDataChanged()
 }
 
 export async function eliminarDocumento(id: string): Promise<void> {
   await eliminarStockDocumento(id)
+  await eliminarCajaDocumento(id)
   // Borrar items primero (cascade tambien lo hace, pero por las dudas)
   await supabaseAfip.from('documento_items').delete().eq('documento_id', id)
   const { error } = await supabaseAfip.from('documentos').delete().eq('id', id)
   if (error) throw error
   notifyDataChanged()
+}
+
+export function siguienteTipoConvertible(
+  tipoDocumento: TipoDocumentoComercial
+): TipoDocumentoComercial | null {
+  if (tipoDocumento === 'presupuesto') return 'pedido'
+  if (tipoDocumento === 'pedido') return 'remito'
+  if (tipoDocumento === 'remito') return 'factura'
+  return null
+}
+
+export function puedeConvertirDocumento(documento: Documento): boolean {
+  return !!siguienteTipoConvertible(documento.tipo_documento)
+    && !['borrador', 'anulado'].includes(documento.estado)
+}
+
+export async function convertirDocumento(id: string): Promise<Documento> {
+  const { data: docData, error: docError } = await supabaseAfip
+    .from('documentos')
+    .select('*')
+    .eq('id', id)
+    .single()
+  if (docError) throw docError
+
+  const origen = docData as Documento
+  if (!puedeConvertirDocumento(origen)) {
+    throw new Error('Este documento no se puede convertir')
+  }
+
+  const destinoTipo = siguienteTipoConvertible(origen.tipo_documento)
+  if (!destinoTipo) throw new Error('No hay un documento destino disponible')
+
+  const { data: itemsData, error: itemsError } = await supabaseAfip
+    .from('documento_items')
+    .select('*')
+    .eq('documento_id', origen.id)
+    .order('orden', { ascending: true })
+  if (itemsError) throw itemsError
+
+  const items = (itemsData ?? []) as DocumentoItem[]
+  if (items.length === 0) {
+    throw new Error('No se puede convertir un documento sin items')
+  }
+
+  const numero = await siguienteNumeroInterno(
+    origen.empresa_id,
+    origen.tipo_operacion,
+    destinoTipo
+  )
+  const observaciones = [
+    `Generado desde ${origen.numero_interno}.`,
+    origen.observaciones,
+  ].filter(Boolean).join('\n')
+
+  const insertResult = await supabaseAfip
+    .from('documentos')
+    .insert({
+      empresa_id: origen.empresa_id,
+      tipo_operacion: origen.tipo_operacion,
+      tipo_documento: destinoTipo,
+      estado: 'borrador',
+      numero_interno: numero,
+      punto_venta_id: origen.punto_venta_id,
+      cliente_id: origen.cliente_id,
+      proveedor_id: origen.proveedor_id,
+      fecha: todayStr(),
+      fecha_vencimiento: origen.fecha_vencimiento,
+      moneda: origen.moneda,
+      tipo_cambio: origen.tipo_cambio,
+      subtotal: origen.subtotal,
+      iva_total: origen.iva_total,
+      exento: origen.exento,
+      no_gravado: origen.no_gravado,
+      percepciones: origen.percepciones,
+      total: origen.total,
+      observaciones,
+      cuenta_id: null,
+      movimiento_id: null,
+    })
+    .select('*')
+    .single()
+  if (insertResult.error) throw insertResult.error
+
+  const destino = insertResult.data as Documento
+  const itemsPayload = items.map(it => ({
+    documento_id: destino.id,
+    producto_id: it.producto_id,
+    orden: it.orden,
+    codigo: it.codigo,
+    descripcion: it.descripcion,
+    cantidad: it.cantidad,
+    unidad_medida: it.unidad_medida,
+    precio_unitario: it.precio_unitario,
+    bonificacion: it.bonificacion,
+    alicuota_iva: it.alicuota_iva,
+    iva_importe: it.iva_importe,
+    subtotal: it.subtotal,
+    total: it.total,
+  }))
+  const { error: insertItemsError } = await supabaseAfip
+    .from('documento_items')
+    .insert(itemsPayload)
+  if (insertItemsError) throw insertItemsError
+
+  const { error: relacionError } = await supabaseAfip
+    .from('documento_relaciones')
+    .insert({
+      origen_id: origen.id,
+      destino_id: destino.id,
+      tipo_relacion: 'origen',
+    })
+  if (relacionError) throw relacionError
+
+  const nuevoEstado = estadoOrigenDespuesDeConversion(destinoTipo)
+  if (nuevoEstado) {
+    const { error: estadoError } = await supabaseAfip
+      .from('documentos')
+      .update({ estado: nuevoEstado })
+      .eq('id', origen.id)
+    if (estadoError) throw estadoError
+    await syncStockDocumento(origen.id)
+    await syncCajaDocumento(origen.id)
+  }
+
+  notifyDataChanged()
+  return destino
 }
 
 export async function emitirDocumentoArca(id: string): Promise<unknown> {
@@ -271,6 +428,14 @@ export async function emitirDocumentoArca(id: string): Promise<unknown> {
 function mueveStock(documento: Documento): boolean {
   if (!['factura', 'remito'].includes(documento.tipo_documento)) return false
   return ['confirmado', 'emitido'].includes(documento.estado)
+}
+
+function estadoOrigenDespuesDeConversion(
+  destinoTipo: TipoDocumentoComercial
+): EstadoDocumento | null {
+  if (destinoTipo === 'remito') return 'remitido'
+  if (destinoTipo === 'factura') return 'facturado'
+  return null
 }
 
 async function eliminarStockDocumento(documentoId: string): Promise<Map<string, number>> {
@@ -359,6 +524,153 @@ async function syncStockDocumento(documentoId: string): Promise<void> {
   }
 
   await ajustarStockProductos(deltas)
+}
+
+function mueveCaja(documento: Documento): boolean {
+  return documento.tipo_documento === 'factura'
+    && ['confirmado', 'emitido'].includes(documento.estado)
+    && !!documento.cuenta_id
+}
+
+async function eliminarCajaDocumento(documentoId: string): Promise<void> {
+  const { data, error } = await supabaseAfip
+    .from('documentos')
+    .select('movimiento_id')
+    .eq('id', documentoId)
+    .maybeSingle()
+  if (error) throw error
+
+  const movimientoId = (data as { movimiento_id: string | null } | null)?.movimiento_id
+  if (!movimientoId) return
+
+  const { error: deleteError } = await supabase
+    .from('movimientos')
+    .delete()
+    .eq('id', movimientoId)
+  if (deleteError) throw deleteError
+}
+
+async function syncCajaDocumento(
+  documentoId: string,
+  metodoPago: MetodoPago = 'transferencia'
+): Promise<void> {
+  const { data: docData, error: docError } = await supabaseAfip
+    .from('documentos')
+    .select('*')
+    .eq('id', documentoId)
+    .single()
+  if (docError) throw docError
+
+  const documento = docData as Documento
+  if (!mueveCaja(documento)) {
+    if (documento.movimiento_id) {
+      await eliminarCajaDocumento(documento.id)
+      const { error } = await supabaseAfip
+        .from('documentos')
+        .update({ movimiento_id: null })
+        .eq('id', documento.id)
+      if (error) throw error
+    }
+    return
+  }
+
+  const tipoMovimiento: TipoMovimiento = documento.tipo_operacion === 'venta' ? 'ingreso' : 'egreso'
+  const categoriaId = await getCategoriaCajaId(tipoMovimiento)
+  const contacto = await getContactoDocumento(documento)
+  const montoArs = documento.moneda === 'USD'
+    ? roundMoney(Number(documento.total) * Number(documento.tipo_cambio || 1))
+    : roundMoney(Number(documento.total))
+  const montoUsd = documento.moneda === 'USD' ? roundMoney(Number(documento.total)) : null
+  const descripcion = `${documento.tipo_operacion === 'venta' ? 'Cobro' : 'Pago'} ${documento.tipo_documento} ${documento.numero_interno}`
+  const movimientoPayload = {
+    fecha: documento.fecha,
+    tipo: tipoMovimiento,
+    monto_ars: montoArs,
+    monto_usd: montoUsd,
+    tipo_cambio: documento.moneda === 'USD' ? Number(documento.tipo_cambio || 1) : null,
+    categoria_id: categoriaId,
+    subcategoria: 'Documentos',
+    descripcion,
+    contacto,
+    metodo_pago: metodoPago,
+    cuenta_id: documento.cuenta_id as string,
+    notas: documento.observaciones,
+  }
+
+  if (documento.movimiento_id) {
+    const { error } = await supabase
+      .from('movimientos')
+      .update({ ...movimientoPayload, updated_at: new Date().toISOString() })
+      .eq('id', documento.movimiento_id)
+    if (error) throw error
+    return
+  }
+
+  const now = new Date().toISOString()
+  const movimientoId = uuidv4()
+  const { error: insertError } = await supabase
+    .from('movimientos')
+    .insert({
+      id: movimientoId,
+      ...movimientoPayload,
+      created_at: now,
+      updated_at: now,
+    })
+  if (insertError) throw insertError
+
+  const { error: updateDocError } = await supabaseAfip
+    .from('documentos')
+    .update({ movimiento_id: movimientoId })
+    .eq('id', documento.id)
+  if (updateDocError) throw updateDocError
+}
+
+async function getCategoriaCajaId(tipo: TipoMovimiento): Promise<string> {
+  const preferida = tipo === 'ingreso' ? 'cat-venta-equipos' : 'cat-mercaderia'
+  const { data: categoriaPreferida, error: preferredError } = await supabase
+    .from('categorias')
+    .select('id')
+    .eq('id', preferida)
+    .maybeSingle()
+  if (preferredError) throw preferredError
+  if (categoriaPreferida?.id) return categoriaPreferida.id
+
+  const { data, error } = await supabase
+    .from('categorias')
+    .select('id')
+    .eq('tipo', tipo)
+    .order('nombre')
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  if (!data?.id) throw new Error('No hay categoria de caja para registrar el movimiento')
+  return data.id
+}
+
+async function getContactoDocumento(documento: Documento): Promise<string | null> {
+  if (documento.tipo_operacion === 'venta' && documento.cliente_id) {
+    const { data, error } = await supabaseAfip
+      .from('clientes')
+      .select('razon_social')
+      .eq('id', documento.cliente_id)
+      .maybeSingle()
+    if (error) throw error
+    return (data as { razon_social: string } | null)?.razon_social ?? null
+  }
+  if (documento.tipo_operacion === 'compra' && documento.proveedor_id) {
+    const { data, error } = await supabaseAfip
+      .from('proveedores')
+      .select('razon_social')
+      .eq('id', documento.proveedor_id)
+      .maybeSingle()
+    if (error) throw error
+    return (data as { razon_social: string } | null)?.razon_social ?? null
+  }
+  return null
+}
+
+function roundMoney(value: number): number {
+  return Math.round((Number.isFinite(value) ? value : 0) * 100) / 100
 }
 
 async function ajustarStockProductos(deltas: Map<string, number>): Promise<void> {

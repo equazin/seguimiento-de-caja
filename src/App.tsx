@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { Layout } from '@/components/layout/Layout'
 import { Dashboard } from '@/pages/Dashboard'
@@ -9,24 +9,23 @@ import { Reportes } from '@/pages/Reportes'
 import { Configuracion } from '@/pages/Configuracion'
 import { Ventas } from '@/pages/Ventas'
 import { Compras } from '@/pages/Compras'
+import { DocumentoEditor } from '@/pages/DocumentoEditor'
 import { Catalogo } from '@/pages/Catalogo'
 import { Fiscal } from '@/pages/Fiscal'
 import { MovimientoModal } from '@/components/movimientos/MovimientoModal'
-import { DocumentoModal } from '@/components/ventas/DocumentoModal'
 import { ContactoModal } from '@/components/catalogo/ContactoModal'
 import { ProductoModal } from '@/components/catalogo/ProductoModal'
 import { LoginPage } from '@/components/auth/LoginPage'
 import { AuthProvider, useAuth } from '@/lib/auth'
 import { seedDatosIniciales } from '@/lib/seed'
-import type { Movimiento, TipoOperacion } from '@/db/schema'
+import type { Movimiento } from '@/db/schema'
 import type { GlobalAction } from '@/components/ui/ActionMenu'
 
 function AppShell() {
   const { session, loading } = useAuth()
+  const navigate = useNavigate()
   const [modalOpen, setModalOpen] = useState(false)
   const [movimientoEditar, setMovimientoEditar] = useState<Movimiento | null>(null)
-  const [documentoOpen, setDocumentoOpen] = useState(false)
-  const [documentoTipo, setDocumentoTipo] = useState<TipoOperacion>('venta')
   const [contactoOpen, setContactoOpen] = useState(false)
   const [contactoTipo, setContactoTipo] = useState<'cliente' | 'proveedor'>('cliente')
   const [productoOpen, setProductoOpen] = useState(false)
@@ -75,8 +74,7 @@ function AppShell() {
       return
     }
     if (action === 'venta' || action === 'compra') {
-      setDocumentoTipo(action)
-      setDocumentoOpen(true)
+      navigate(action === 'venta' ? '/ventas/nuevo' : '/compras/nuevo')
       return
     }
     if (action === 'cliente' || action === 'proveedor') {
@@ -129,7 +127,7 @@ function AppShell() {
   }
 
   return (
-    <BrowserRouter basename={import.meta.env.BASE_URL}>
+    <>
       <Toaster
         position="bottom-right"
         toastOptions={{
@@ -157,7 +155,11 @@ function AppShell() {
           />
           <Route path="/cuentas" element={<Cuentas />} />
           <Route path="/ventas" element={<Ventas />} />
+          <Route path="/ventas/nuevo" element={<DocumentoEditor tipoOperacion="venta" />} />
+          <Route path="/ventas/:id" element={<DocumentoEditor tipoOperacion="venta" />} />
           <Route path="/compras" element={<Compras />} />
+          <Route path="/compras/nuevo" element={<DocumentoEditor tipoOperacion="compra" />} />
+          <Route path="/compras/:id" element={<DocumentoEditor tipoOperacion="compra" />} />
           <Route path="/catalogo" element={<Catalogo />} />
           <Route path="/fiscal" element={<Fiscal />} />
           <Route path="/reportes" element={<Reportes />} />
@@ -168,12 +170,6 @@ function AppShell() {
         open={modalOpen}
         onClose={handleCloseModal}
         movimiento={movimientoEditar}
-      />
-      <DocumentoModal
-        open={documentoOpen}
-        onClose={() => setDocumentoOpen(false)}
-        documento={null}
-        tipoOperacion={documentoTipo}
       />
       <ContactoModal
         open={contactoOpen}
@@ -186,14 +182,16 @@ function AppShell() {
         onClose={() => setProductoOpen(false)}
         producto={null}
       />
-    </BrowserRouter>
+    </>
   )
 }
 
 export default function App() {
   return (
     <AuthProvider>
-      <AppShell />
+      <BrowserRouter basename={import.meta.env.BASE_URL}>
+        <AppShell />
+      </BrowserRouter>
     </AuthProvider>
   )
 }

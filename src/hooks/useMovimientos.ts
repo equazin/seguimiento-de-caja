@@ -60,6 +60,19 @@ export function useUltimosMovimientos(limite: number = 10) {
   }, [limite], ['movimientos'])
 }
 
+export function useMovimiento(id: string | null) {
+  return useSupabaseQuery(async () => {
+    if (!id) return null
+    const { data, error } = await supabase
+      .from('movimientos')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle()
+    if (error) throw error
+    return data ?? null
+  }, [id], ['movimientos'])
+}
+
 export async function crearMovimiento(data: Omit<Movimiento, 'id' | 'created_at' | 'updated_at'>) {
   const now = new Date().toISOString()
   const { error } = await supabase

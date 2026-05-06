@@ -6,17 +6,21 @@ import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/lib/auth'
 import { useClientes, useProductos, useProveedores } from '@/hooks/useCatalogo'
+import { useCuentas } from '@/hooks/useCuentas'
 import {
   crearDocumento,
   actualizarDocumento,
   useDocumentoItems,
 } from '@/hooks/useDocumentos'
+import { useMovimiento } from '@/hooks/useMovimientos'
 import { calcularTotales, type ItemDraft } from '@/lib/documentos'
-import { formatMoney, todayStr } from '@/lib/formatters'
+import { METODOS_PAGO } from '@/lib/constants'
+import { cn, formatMoney, todayStr } from '@/lib/formatters'
 import type {
   Documento,
   TipoDocumentoComercial,
   EstadoDocumento,
+  MetodoPago,
   Producto,
   TipoOperacion,
 } from '@/db/schema'
@@ -37,6 +41,15 @@ interface DocumentoModalProps {
   tipoOperacion?: TipoOperacion
 }
 
+interface DocumentoEditorPanelProps {
+  documento: Documento | null
+  tipoOperacion?: TipoOperacion
+  onCancel: () => void
+  onSaved?: (documento: Documento | null) => void
+  variant?: 'modal' | 'page'
+  className?: string
+}
+
 interface FormState {
   tipo_documento: TipoDocumentoForm
   contacto_id: string
@@ -44,6 +57,8 @@ interface FormState {
   fecha_vencimiento: string
   moneda: 'ARS' | 'USD'
   tipo_cambio: string
+  cuenta_id: string
+  metodo_pago: MetodoPago
   observaciones: string
   estado: EstadoDocumento
   items: ItemDraft[]
@@ -57,6 +72,8 @@ function emptyForm(): FormState {
     fecha_vencimiento: '',
     moneda: 'ARS',
     tipo_cambio: '1',
+    cuenta_id: '',
+    metodo_pago: 'transferencia',
     observaciones: '',
     estado: 'borrador',
     items: [],
@@ -82,11 +99,41 @@ export function DocumentoModal({
   documento,
   tipoOperacion = 'venta',
 }: DocumentoModalProps) {
+  const titulo = getDocumentoTitulo(documento, tipoOperacion)
+
+  return (
+    <Dialog open={open} onClose={onClose} title={titulo} size="2xl">
+      <DocumentoEditorPanel
+        documento={documento}
+        tipoOperacion={tipoOperacion}
+        onCancel={onClose}
+        onSaved={() => onClose()}
+      />
+    </Dialog>
+  )
+}
+
+export function getDocumentoTitulo(documento: Documento | null, tipoOperacion: TipoOperacion) {
+  return documento
+    ? `Editar ${documento.tipo_documento} ${documento.numero_interno}`
+    : `Nuevo documento de ${tipoOperacion === 'venta' ? 'venta' : 'compra'}`
+}
+
+export function DocumentoEditorPanel({
+  documento,
+  tipoOperacion = 'venta',
+  onCancel,
+  onSaved,
+  variant = 'modal',
+  className,
+}: DocumentoEditorPanelProps) {
   const { empresa } = useAuth()
   const clientes = useClientes({ soloActivos: true })
   const proveedores = useProveedores({ soloActivos: true })
   const productos = useProductos({ soloActivos: true })
+  const cuentas = useCuentas()
   const documentoItems = useDocumentoItems(documento?.id ?? null)
+  const movimientoCaja = useMovimiento(documento?.movimiento_id ?? null)
   const contactos = tipoOperacion === 'venta' ? clientes : proveedores
 
   const [form, setForm] = useState<FormState>(emptyForm)
@@ -94,7 +141,6 @@ export function DocumentoModal({
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!open) return
     if (documento) {
       setForm({
         tipo_documento: documento.tipo_documento as TipoDocumentoForm,
@@ -103,6 +149,8 @@ export function DocumentoModal({
         fecha_vencimiento: documento.fecha_vencimiento ?? '',
         moneda: documento.moneda,
         tipo_cambio: String(documento.tipo_cambio),
+        cuenta_id: documento.cuenta_id ?? '',
+        metodo_pago: movimientoCaja?.metodo_pago ?? 'transferencia',
         observaciones: documento.observaciones ?? '',
         estado: documento.estado,
         items: [],  // los carga el effect siguiente cuando llegan
@@ -111,7 +159,16 @@ export function DocumentoModal({
       setForm(emptyForm())
     }
     setError(null)
-  }, [open, documento?.id])
+  }, [documento?.id, tipoOperacion])
+
+  useEffect(() => {
+    if (!documento || !movimientoCaja) return
+    setForm(prev => ({
+      ...prev,
+      cuenta_id: movimientoCaja.cuenta_id,
+      metodo_pago: movimientoCaja.metodo_pago,
+    }))
+  }, [documento?.id, movimientoCaja?.id])
 
   // Cargar items existentes en el form al editar
   useEffect(() => {
@@ -209,22 +266,25 @@ export function DocumentoModal({
         moneda: form.moneda,
         tipoCambio: Number.isFinite(tipoCambio) && tipoCambio > 0 ? tipoCambio : 1,
         observaciones: form.observaciones.trim() || null,
+        cuentaId: form.tipo_documento === 'factura' ? form.cuenta_id || null : null,
+        metodoPago: form.metodo_pago,
         estado: estadoFinal,
         items: form.items,
       }
       if (documento) {
         await actualizarDocumento({ id: documento.id, ...payload })
         toast.success('Documento actualizado')
+        onSaved?.(documento)
       } else {
-        await crearDocumento({
+        const creado = await crearDocumento({
           empresaId: empresa.id,
           tipoOperacion,
           tipoDocumento: form.tipo_documento as TipoDocumentoComercial,
           ...payload,
         })
         toast.success('Documento creado')
+        onSaved?.(creado)
       }
-      onClose()
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'No se pudo guardar'
       setError(message)
@@ -235,15 +295,15 @@ export function DocumentoModal({
   }
 
   const editable = !documento || documento.estado === 'borrador'
-  const titulo = documento
-    ? `Editar ${documento.tipo_documento} ${documento.numero_interno}`
-    : `Nuevo documento de ${tipoOperacion === 'venta' ? 'venta' : 'compra'}`
   const contactoLabel = tipoOperacion === 'venta' ? 'Cliente' : 'Proveedor'
   const contactoEmpty = tipoOperacion === 'venta' ? 'Consumidor final' : 'Sin proveedor'
+  const cajaLabel = tipoOperacion === 'venta' ? 'Cuenta de cobro' : 'Cuenta de pago'
+  const footerClass = variant === 'modal'
+    ? '-mx-6 -mb-5 bg-surface/95 px-6'
+    : '-mx-4 -mb-4 bg-background/95 px-4 sm:-mx-6 sm:-mb-6 sm:px-6'
 
   return (
-    <Dialog open={open} onClose={onClose} title={titulo} size="2xl">
-      <form className="space-y-5" onSubmit={e => onSubmit(e, form.estado)}>
+      <form className={cn('space-y-5', className)} onSubmit={e => onSubmit(e, form.estado)}>
         <div className="rounded-xl border border-border bg-surface-2/70 p-4">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -310,6 +370,51 @@ export function DocumentoModal({
             )}
           </div>
         </div>
+
+        {form.tipo_documento === 'factura' && (
+          <div className="rounded-xl border border-border bg-surface-2/70 p-4">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Caja</p>
+                <h3 className="text-sm font-semibold text-white">
+                  {tipoOperacion === 'venta' ? 'Cobro de factura' : 'Pago de factura'}
+                </h3>
+              </div>
+              {documento?.movimiento_id && (
+                <span className="rounded-md border border-success/30 bg-success/10 px-2 py-1 text-xs font-medium text-success">
+                  Registrado
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Select
+                label={cajaLabel}
+                value={form.cuenta_id}
+                onChange={e => update('cuenta_id', e.target.value)}
+                disabled={!editable}
+              >
+                <option value="">Sin registrar en caja</option>
+                {(cuentas ?? []).map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.nombre}
+                  </option>
+                ))}
+              </Select>
+              <Select
+                label="Metodo"
+                value={form.metodo_pago}
+                onChange={e => update('metodo_pago', e.target.value as MetodoPago)}
+                disabled={!editable || !form.cuenta_id}
+              >
+                {METODOS_PAGO.map(m => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
+        )}
 
         <div className="rounded-xl border border-border bg-surface-2/70 p-4">
           <div className="flex items-center justify-between">
@@ -473,8 +578,8 @@ export function DocumentoModal({
           </div>
         )}
 
-        <div className="sticky bottom-0 -mx-6 -mb-5 flex flex-col justify-end gap-2 border-t border-border bg-surface/95 px-6 py-4 backdrop-blur sm:flex-row">
-          <Button type="button" variant="ghost" onClick={onClose}>
+        <div className={cn('sticky bottom-0 flex flex-col justify-end gap-2 border-t border-border py-4 backdrop-blur sm:flex-row', footerClass)}>
+          <Button type="button" variant="ghost" onClick={onCancel}>
             Cancelar
           </Button>
           <Button
@@ -494,6 +599,5 @@ export function DocumentoModal({
           </Button>
         </div>
       </form>
-    </Dialog>
   )
 }
