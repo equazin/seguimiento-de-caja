@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react'
-import { Plus, Edit2, Power, Search } from 'lucide-react'
+import { Plus, Edit2, Power, Search, Users, Truck } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Input } from '@/components/ui/Input'
 import { PageToolbar } from '@/components/ui/PageToolbar'
 import { SkeletonTable } from '@/components/ui/Skeleton'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { RowActionsMenu } from '@/components/ui/RowActionsMenu'
 import { ContactoModal } from './ContactoModal'
 import {
   useClientes,
@@ -104,9 +106,23 @@ export function ContactosTab({ tipo }: ContactosTabProps) {
             <SkeletonTable rows={5} />
           </div>
         ) : items.length === 0 ? (
-          <div className="p-10 text-center text-sm text-muted-foreground">
-            No hay {tipo === 'cliente' ? 'clientes' : 'proveedores'} que coincidan.
-          </div>
+          busqueda ? (
+            <div className="p-10 text-center text-sm text-muted-foreground">
+              No hay {tipo === 'cliente' ? 'clientes' : 'proveedores'} que coincidan con “{busqueda}”.
+            </div>
+          ) : (
+            <EmptyState
+              icon={tipo === 'cliente' ? Users : Truck}
+              titulo={tipo === 'cliente' ? 'Todavía no cargaste clientes' : 'Todavía no cargaste proveedores'}
+              descripcion={`Cargá tus ${tipo === 'cliente' ? 'clientes' : 'proveedores'} con CUIT y condición IVA para usarlos en documentos.`}
+              action={
+                <Button onClick={abrirNuevo}>
+                  <Plus size={16} />
+                  Crear primer {tipo === 'cliente' ? 'cliente' : 'proveedor'}
+                </Button>
+              }
+            />
+          )
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -145,22 +161,19 @@ export function ContactosTab({ tipo }: ContactosTabProps) {
                     <td className="px-4 py-3 text-muted-foreground">{c.email ?? '—'}</td>
                     <td className="px-4 py-3 text-muted-foreground">{c.telefono ?? '—'}</td>
                     <td className="px-4 py-3 text-right">
-                      <div className="inline-flex gap-1">
-                        <button
-                          onClick={() => abrirEditar(c)}
-                          className="p-1.5 rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-white transition-colors"
-                          title="Editar"
-                        >
-                          <Edit2 size={15} />
-                        </button>
-                        <button
-                          onClick={() => void toggleActivo(c)}
-                          className="p-1.5 rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-white transition-colors"
-                          title={c.activo ? 'Desactivar' : 'Reactivar'}
-                        >
-                          <Power size={15} />
-                        </button>
-                      </div>
+                      <RowActionsMenu
+                        ariaLabel={`Acciones de ${c.razon_social}`}
+                        actions={[
+                          { id: 'editar', label: 'Editar', icon: Edit2, onClick: () => abrirEditar(c) },
+                          {
+                            id: 'toggle',
+                            label: c.activo ? 'Desactivar' : 'Reactivar',
+                            icon: Power,
+                            tone: c.activo ? 'danger' : 'success',
+                            onClick: () => void toggleActivo(c),
+                          },
+                        ]}
+                      />
                     </td>
                   </tr>
                 ))}

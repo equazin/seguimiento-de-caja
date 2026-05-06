@@ -5,6 +5,7 @@ import {
   ShoppingCart, Truck, Package, FileText,
 } from 'lucide-react'
 import { cn } from '@/lib/formatters'
+import { useAuth } from '@/lib/auth'
 
 interface SidebarProps {
   collapsed: boolean
@@ -39,6 +40,13 @@ const NAV_GROUPS = [
 ]
 
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
+  const { empresa } = useAuth()
+  const nombre = empresa?.nombre_fantasia || empresa?.razon_social || 'Bartez Caja'
+  const ambiente = empresa?.arca_ambiente
+  const subtitulo = ambiente
+    ? ambiente === 'produccion' ? 'Producción' : 'Homologación'
+    : 'Caja & Facturación'
+
   return (
     <aside
       className={cn(
@@ -55,9 +63,14 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           <Building2 size={18} className="text-white" />
         </div>
         {!collapsed && (
-          <div className="overflow-hidden">
-            <p className="text-sm font-bold text-white leading-tight truncate">Bartez</p>
-            <p className="text-xs text-muted-foreground truncate">Tecnología</p>
+          <div className="min-w-0 overflow-hidden">
+            <p className="truncate text-sm font-bold leading-tight text-white" title={nombre}>{nombre}</p>
+            <p className={cn(
+              'truncate text-xs',
+              ambiente === 'produccion' ? 'text-success' : 'text-muted-foreground'
+            )}>
+              {subtitulo}
+            </p>
           </div>
         )}
       </div>
@@ -98,14 +111,15 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         </div>
       </nav>
 
-      <div className="p-3 border-t border-border">
+      <div className="border-t border-border p-3">
         <button
           onClick={onToggle}
           className={cn(
-            'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-muted-foreground',
-            'hover:bg-surface-2 hover:text-white transition-colors',
+            'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-muted-foreground transition-colors',
+            'hover:bg-surface-2 hover:text-white',
             collapsed && 'justify-center px-0'
           )}
+          title={collapsed ? 'Expandir' : 'Contraer'}
         >
           {collapsed ? <ChevronRight size={16} /> : <><ChevronLeft size={16} /><span>Contraer</span></>}
         </button>

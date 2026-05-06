@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react'
-import { Plus, Edit2, Power, Search, AlertTriangle } from 'lucide-react'
+import { Plus, Edit2, Power, Search, AlertTriangle, Package } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Input } from '@/components/ui/Input'
 import { PageToolbar } from '@/components/ui/PageToolbar'
 import { SkeletonTable } from '@/components/ui/Skeleton'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { RowActionsMenu } from '@/components/ui/RowActionsMenu'
 import { ProductoModal } from './ProductoModal'
 import { useProductos, setProductoActivo } from '@/hooks/useCatalogo'
 import { formatMoney } from '@/lib/formatters'
@@ -96,9 +98,23 @@ export function ProductosTab() {
             <SkeletonTable rows={5} />
           </div>
         ) : items.length === 0 ? (
-          <div className="p-10 text-center text-sm text-muted-foreground">
-            No hay productos que coincidan.
-          </div>
+          busqueda ? (
+            <div className="p-10 text-center text-sm text-muted-foreground">
+              No hay productos que coincidan con “{busqueda}”.
+            </div>
+          ) : (
+            <EmptyState
+              icon={Package}
+              titulo="Todavía no cargaste productos"
+              descripcion="Agregá productos o servicios con su precio y alícuota IVA para usarlos en facturas."
+              action={
+                <Button onClick={abrirNuevo}>
+                  <Plus size={16} />
+                  Crear primer producto
+                </Button>
+              }
+            />
+          )
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -150,22 +166,19 @@ export function ProductosTab() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <div className="inline-flex gap-1">
-                          <button
-                            onClick={() => abrirEditar(p)}
-                            className="p-1.5 rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-white transition-colors"
-                            title="Editar"
-                          >
-                            <Edit2 size={15} />
-                          </button>
-                          <button
-                            onClick={() => void toggleActivo(p)}
-                            className="p-1.5 rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-white transition-colors"
-                            title={p.activo ? 'Desactivar' : 'Reactivar'}
-                          >
-                            <Power size={15} />
-                          </button>
-                        </div>
+                        <RowActionsMenu
+                          ariaLabel={`Acciones de ${p.nombre}`}
+                          actions={[
+                            { id: 'editar', label: 'Editar', icon: Edit2, onClick: () => abrirEditar(p) },
+                            {
+                              id: 'toggle',
+                              label: p.activo ? 'Desactivar' : 'Reactivar',
+                              icon: Power,
+                              tone: p.activo ? 'danger' : 'success',
+                              onClick: () => void toggleActivo(p),
+                            },
+                          ]}
+                        />
                       </td>
                     </tr>
                   )

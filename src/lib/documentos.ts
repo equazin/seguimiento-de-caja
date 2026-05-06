@@ -135,6 +135,62 @@ export function tipoDocumentoLabel(tipo: TipoDocumentoComercial): string {
   return TIPO_DOCUMENTO_LABEL[tipo]
 }
 
+// =========================================================================
+// Errores de ARCA: extraer mensajes amigables
+// =========================================================================
+
+export interface ArcaMensaje {
+  code?: number | string | null
+  msg?: string | null
+}
+
+export function parseArcaMensajes(input: unknown): ArcaMensaje[] {
+  if (!input) return []
+  if (Array.isArray(input)) {
+    const result: ArcaMensaje[] = []
+    for (const item of input) {
+      if (item && typeof item === 'object') {
+        const record = item as Record<string, unknown>
+        const code = (record.code ?? record.Code ?? null) as ArcaMensaje['code']
+        const msg = (record.msg ?? record.Msg ?? null) as ArcaMensaje['msg']
+        if (msg || code) result.push({ code, msg })
+      } else if (typeof item === 'string' && item.trim()) {
+        result.push({ msg: item })
+      }
+    }
+    return result
+  }
+  if (typeof input === 'string') {
+    try {
+      const parsed = JSON.parse(input)
+      return parseArcaMensajes(parsed)
+    } catch {
+      return [{ msg: input }]
+    }
+  }
+  if (typeof input === 'object') {
+    return parseArcaMensajes([input])
+  }
+  return []
+}
+
+export function primerMensajeArca(input: unknown): string | null {
+  const mensajes = parseArcaMensajes(input)
+  if (mensajes.length === 0) return null
+  const first = mensajes[0]
+  return (first.msg ?? '').trim() || (first.code ? `Error ${first.code}` : null)
+}
+
+export function formatMensajesArca(input: unknown, maxLen = 220): string | null {
+  const mensajes = parseArcaMensajes(input)
+  if (mensajes.length === 0) return null
+  const joined = mensajes
+    .map(m => [m.code != null ? `[${m.code}]` : '', m.msg ?? ''].filter(Boolean).join(' ').trim())
+    .filter(Boolean)
+    .join(' · ')
+  return joined.length > maxLen ? `${joined.slice(0, maxLen - 1)}…` : joined
+}
+
 export function itemFromCalculado(it: ItemCalculado, orden: number): Omit<DocumentoItem, 'id' | 'documento_id'> {
   return {
     producto_id: it.producto_id,

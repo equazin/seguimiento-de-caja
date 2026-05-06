@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { Plus, Edit2, Trash2, Search, FileText, CheckCircle2, XCircle, Download } from 'lucide-react'
+import { Plus, Edit2, Trash2, Search, FileText, CheckCircle2, XCircle, Download, RotateCcw, Truck } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
@@ -7,6 +7,8 @@ import { Badge } from '@/components/ui/Badge'
 import { PageToolbar } from '@/components/ui/PageToolbar'
 import { SkeletonTable } from '@/components/ui/Skeleton'
 import { ConfirmDialog } from '@/components/ui/Dialog'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { RowActionsMenu, type RowAction } from '@/components/ui/RowActionsMenu'
 import { DocumentoModal } from '@/components/ventas/DocumentoModal'
 import { useProveedores } from '@/hooks/useCatalogo'
 import {
@@ -77,6 +79,8 @@ export function Compras() {
 
   const loading = documentos === undefined
   const items = documentos ?? []
+  const sinFiltros = !tipoDocumento && !estado && !busqueda
+  const sinDocumentos = !loading && items.length === 0 && sinFiltros
   const resumen = {
     total: items.length,
     borradores: items.filter(d => d.estado === 'borrador').length,
@@ -146,6 +150,31 @@ export function Compras() {
     setConfirmDelete(null)
   }
 
+  if (sinDocumentos) {
+    return (
+      <div className="rounded-xl border border-border bg-surface/90 shadow-xl shadow-black/10">
+        <EmptyState
+          icon={Truck}
+          titulo="Todavía no cargaste compras"
+          descripcion="Cargá facturas, remitos y notas de tus proveedores. Los items confirmados suman stock automáticamente."
+          action={
+            <Button onClick={abrirNuevo}>
+              <Plus size={16} />
+              Cargar primer comprobante
+            </Button>
+          }
+          hint="Tip: cargá primero el proveedor en Catálogo para autocompletar los datos."
+        />
+        <DocumentoModal
+          open={modalOpen}
+          onClose={() => setModalOpen(false)}
+          documento={editar}
+          tipoOperacion="compra"
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
@@ -205,7 +234,7 @@ export function Compras() {
           <div className="p-12 text-center space-y-2">
             <FileText size={32} className="mx-auto text-muted-foreground" />
             <p className="text-sm text-muted-foreground">
-              No hay documentos que coincidan.
+              No hay compras que coincidan con los filtros aplicados.
             </p>
           </div>
         ) : (
@@ -244,60 +273,18 @@ export function Compras() {
                         {formatMoney(d.total, d.moneda)}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <div className="inline-flex flex-wrap justify-end gap-1">
-                          <button
-                            onClick={() => abrirEditar(d)}
-                            className="p-1.5 rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-white transition-colors"
-                            title="Ver / editar"
-                          >
-                            <Edit2 size={15} />
-                          </button>
-                          {d.estado !== 'borrador' && (
-                            <button
-                              onClick={() => void descargarPdf(d)}
-                              className="p-1.5 rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-white transition-colors"
-                              title="Descargar PDF"
-                            >
-                              <Download size={15} />
-                            </button>
-                          )}
-                          {d.estado === 'borrador' && (
-                            <>
-                              <button
-                                onClick={() => void confirmar(d)}
-                                className="p-1.5 rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-success transition-colors"
-                                title="Confirmar"
-                              >
-                                <CheckCircle2 size={15} />
-                              </button>
-                              <button
-                                onClick={() => setConfirmDelete(d)}
-                                className="p-1.5 rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-danger transition-colors"
-                                title="Eliminar"
-                              >
-                                <Trash2 size={15} />
-                              </button>
-                            </>
-                          )}
-                          {d.estado === 'confirmado' && (
-                            <button
-                              onClick={() => void anular(d)}
-                              className="p-1.5 rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-danger transition-colors"
-                              title="Anular"
-                            >
-                              <XCircle size={15} />
-                            </button>
-                          )}
-                          {d.estado === 'anulado' && (
-                            <button
-                              onClick={() => void reactivar(d)}
-                              className="p-1.5 rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-white transition-colors"
-                              title="Volver a borrador"
-                            >
-                              <CheckCircle2 size={15} />
-                            </button>
-                          )}
-                        </div>
+                        <RowActionsMenu
+                          ariaLabel={`Acciones de ${d.numero_interno}`}
+                          actions={accionesCompra({
+                            documento: d,
+                            onEditar: () => abrirEditar(d),
+                            onConfirmar: () => void confirmar(d),
+                            onAnular: () => void anular(d),
+                            onReactivar: () => void reactivar(d),
+                            onEliminar: () => setConfirmDelete(d),
+                            onDescargarPdf: () => void descargarPdf(d),
+                          })}
+                        />
                       </td>
                     </tr>
                   )
@@ -326,6 +313,66 @@ export function Compras() {
       />
     </div>
   )
+}
+
+interface AccionesCompraOpts {
+  documento: Documento
+  onEditar: () => void
+  onConfirmar: () => void
+  onAnular: () => void
+  onReactivar: () => void
+  onEliminar: () => void
+  onDescargarPdf: () => void
+}
+
+function accionesCompra({
+  documento,
+  onEditar,
+  onConfirmar,
+  onAnular,
+  onReactivar,
+  onEliminar,
+  onDescargarPdf,
+}: AccionesCompraOpts): RowAction[] {
+  const esBorrador = documento.estado === 'borrador'
+  const esConfirmado = documento.estado === 'confirmado'
+  const esAnulado = documento.estado === 'anulado'
+
+  return [
+    { id: 'ver', label: esBorrador ? 'Editar' : 'Ver detalle', icon: Edit2, onClick: onEditar },
+    { id: 'pdf', label: 'Descargar PDF', icon: Download, hidden: esBorrador, onClick: onDescargarPdf },
+    {
+      id: 'confirmar',
+      label: 'Confirmar',
+      icon: CheckCircle2,
+      tone: 'success',
+      hidden: !esBorrador,
+      onClick: onConfirmar,
+    },
+    {
+      id: 'anular',
+      label: 'Anular',
+      icon: XCircle,
+      tone: 'danger',
+      hidden: !esConfirmado,
+      onClick: onAnular,
+    },
+    {
+      id: 'reactivar',
+      label: 'Volver a borrador',
+      icon: RotateCcw,
+      hidden: !esAnulado,
+      onClick: onReactivar,
+    },
+    {
+      id: 'eliminar',
+      label: 'Eliminar',
+      icon: Trash2,
+      tone: 'danger',
+      hidden: !esBorrador,
+      onClick: onEliminar,
+    },
+  ]
 }
 
 function SummaryTile({

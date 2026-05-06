@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { Plus, Edit2, Trash2, Search, FileText, CheckCircle2, XCircle, Download, Send } from 'lucide-react'
+import { Plus, Edit2, Trash2, Search, FileText, CheckCircle2, XCircle, Download, Send, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/Badge'
 import { PageToolbar } from '@/components/ui/PageToolbar'
 import { SkeletonTable } from '@/components/ui/Skeleton'
 import { ConfirmDialog } from '@/components/ui/Dialog'
+import { RowActionsMenu, type RowAction } from '@/components/ui/RowActionsMenu'
 import { DocumentoModal } from '@/components/ventas/DocumentoModal'
 import { useClientes } from '@/hooks/useCatalogo'
 import {
@@ -18,7 +19,7 @@ import {
 } from '@/hooks/useDocumentos'
 import { useAuth } from '@/lib/auth'
 import { formatMoney, formatDate } from '@/lib/formatters'
-import { tipoDocumentoLabel } from '@/lib/documentos'
+import { tipoDocumentoLabel, primerMensajeArca, formatMensajesArca } from '@/lib/documentos'
 import { descargarDocumentoPdf } from '@/lib/facturaPdf'
 import type {
   Documento,
@@ -256,8 +257,11 @@ export function Ventas() {
                           </div>
                         )}
                         {arca?.resultado === 'R' && (
-                          <div className="mt-1 text-[11px] font-sans text-danger">
-                            {arca.errores ? `Rechazado: ${JSON.stringify(arca.errores).slice(0, 90)}` : 'Rechazado ARCA'}
+                          <div
+                            className="mt-1 max-w-xs truncate text-[11px] font-sans text-danger"
+                            title={formatMensajesArca(arca.errores) ?? 'Rechazado por ARCA'}
+                          >
+                            ⚠ {primerMensajeArca(arca.errores) ?? 'Rechazado por ARCA'}
                           </div>
                         )}
                       </td>
@@ -275,80 +279,21 @@ export function Ventas() {
                         {formatMoney(d.total, d.moneda)}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <div className="inline-flex flex-wrap justify-end gap-1">
-                          <button
-                            onClick={() => abrirEditar(d)}
-                            className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-white"
-                            title="Ver / editar"
-                          >
-                            <Edit2 size={15} />
-                          </button>
-                          {(d.estado === 'emitido' || arca?.cae) && (
-                            <button
-                              onClick={() => void descargarPdf(d)}
-                              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-white"
-                              title="Descargar PDF"
-                            >
-                              <Download size={15} />
-                            </button>
-                          )}
-                          {arca?.resultado === 'R' && d.estado === 'confirmado' && (
-                            <button
-                              onClick={() => void emitir(d)}
-                              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-success"
-                              title="Reintentar ARCA"
-                            >
-                              <Send size={15} />
-                            </button>
-                          )}
-                          {d.estado === 'borrador' && (
-                            <>
-                              <button
-                                onClick={() => void confirmar(d)}
-                                className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-success"
-                                title="Confirmar"
-                              >
-                                <CheckCircle2 size={15} />
-                              </button>
-                              <button
-                                onClick={() => setConfirmDelete(d)}
-                                className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-danger"
-                                title="Eliminar"
-                              >
-                                <Trash2 size={15} />
-                              </button>
-                            </>
-                          )}
-                          {d.estado === 'confirmado' && (
-                            <>
-                              {d.tipo_documento === 'factura' && (
-                                <button
-                                  onClick={() => void emitir(d)}
-                                  className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-success"
-                                  title="Emitir en ARCA"
-                                >
-                                  <Send size={15} />
-                                </button>
-                              )}
-                              <button
-                                onClick={() => void anular(d)}
-                                className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-danger"
-                                title="Anular"
-                              >
-                                <XCircle size={15} />
-                              </button>
-                            </>
-                          )}
-                          {d.estado === 'anulado' && (
-                            <button
-                              onClick={() => void reactivar(d)}
-                              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-white"
-                              title="Volver a borrador"
-                            >
-                              <CheckCircle2 size={15} />
-                            </button>
-                          )}
-                        </div>
+                        <RowActionsMenu
+                          ariaLabel={`Acciones de ${d.numero_interno}`}
+                          actions={accionesDocumento({
+                            documento: d,
+                            tieneArca: !!arca?.cae,
+                            rechazadoArca: arca?.resultado === 'R',
+                            onEditar: () => abrirEditar(d),
+                            onConfirmar: () => void confirmar(d),
+                            onEliminar: () => setConfirmDelete(d),
+                            onEmitir: () => void emitir(d),
+                            onAnular: () => void anular(d),
+                            onReactivar: () => void reactivar(d),
+                            onDescargarPdf: () => void descargarPdf(d),
+                          })}
+                        />
                       </td>
                     </tr>
                   )
@@ -377,6 +322,92 @@ export function Ventas() {
       />
     </div>
   )
+}
+
+interface AccionesDocumentoOpts {
+  documento: Documento
+  tieneArca: boolean
+  rechazadoArca: boolean
+  onEditar: () => void
+  onConfirmar: () => void
+  onEliminar: () => void
+  onEmitir: () => void
+  onAnular: () => void
+  onReactivar: () => void
+  onDescargarPdf: () => void
+}
+
+function accionesDocumento({
+  documento,
+  tieneArca,
+  rechazadoArca,
+  onEditar,
+  onConfirmar,
+  onEliminar,
+  onEmitir,
+  onAnular,
+  onReactivar,
+  onDescargarPdf,
+}: AccionesDocumentoOpts): RowAction[] {
+  const esBorrador = documento.estado === 'borrador'
+  const esConfirmado = documento.estado === 'confirmado'
+  const esAnulado = documento.estado === 'anulado'
+  const esEmitido = documento.estado === 'emitido'
+
+  return [
+    {
+      id: 'ver',
+      label: esBorrador ? 'Editar' : 'Ver detalle',
+      icon: Edit2,
+      onClick: onEditar,
+    },
+    {
+      id: 'pdf',
+      label: 'Descargar PDF',
+      icon: Download,
+      hidden: !(esEmitido || tieneArca),
+      onClick: onDescargarPdf,
+    },
+    {
+      id: 'confirmar',
+      label: 'Confirmar',
+      icon: CheckCircle2,
+      tone: 'success',
+      hidden: !esBorrador,
+      onClick: onConfirmar,
+    },
+    {
+      id: 'emitir',
+      label: rechazadoArca ? 'Reintentar ARCA' : 'Emitir en ARCA',
+      icon: Send,
+      tone: 'success',
+      hidden: !(esConfirmado && documento.tipo_documento === 'factura'),
+      onClick: onEmitir,
+    },
+    {
+      id: 'anular',
+      label: 'Anular',
+      icon: XCircle,
+      tone: 'danger',
+      hidden: !esConfirmado,
+      onClick: onAnular,
+    },
+    {
+      id: 'reactivar',
+      label: 'Volver a borrador',
+      icon: RotateCcw,
+      hidden: !esAnulado,
+      onClick: onReactivar,
+    },
+    {
+      id: 'eliminar',
+      label: 'Eliminar',
+      icon: Trash2,
+      tone: 'danger',
+      hidden: !esBorrador,
+      onClick: onEliminar,
+    },
+  ]
 }
 
 function SummaryTile({

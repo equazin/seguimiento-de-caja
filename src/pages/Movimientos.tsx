@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Trash2, Edit2, ChevronLeft, ChevronRight, ArrowUpDown } from 'lucide-react'
+import { Trash2, Edit2, ChevronLeft, ChevronRight, ArrowUpDown, ArrowLeftRight } from 'lucide-react'
 import { useMovimientos, eliminarMovimiento, eliminarMovimientosBulk } from '@/hooks/useMovimientos'
 import { useCategorias } from '@/hooks/useCategorias'
 import { useCuentas } from '@/hooks/useCuentas'
@@ -8,6 +8,8 @@ import { ConfirmDialog } from '@/components/ui/Dialog'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { SkeletonTable } from '@/components/ui/Skeleton'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { RowActionsMenu } from '@/components/ui/RowActionsMenu'
 import { formatMoney, formatDate } from '@/lib/formatters'
 import { METODOS_PAGO } from '@/lib/constants'
 import type { Movimiento } from '@/db/schema'
@@ -174,8 +176,18 @@ export function Movimientos({ onModalOpen, onEdit }: Props) {
               <tbody>
                 {paginated.length === 0 && (
                   <tr>
-                    <td colSpan={10} className="px-4 py-12 text-center text-muted-foreground">
-                      Sin movimientos
+                    <td colSpan={10} className="px-0 py-0">
+                      <EmptyState
+                        icon={ArrowLeftRight}
+                        titulo="Sin movimientos en este período"
+                        descripcion="Cargá un ingreso o egreso para empezar a ver el flujo de caja."
+                        action={
+                          <Button onClick={onModalOpen}>
+                            <Edit2 size={14} />
+                            Nuevo movimiento
+                          </Button>
+                        }
+                      />
                     </td>
                   </tr>
                 )}
@@ -231,7 +243,7 @@ export function Movimientos({ onModalOpen, onEdit }: Props) {
                       </td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
                         <span className={`font-semibold ${esIngreso ? 'text-success' : 'text-danger'}`}>
-                          {esIngreso ? '+' : '-'}{formatMoney(m.monto_ars)}
+                          {esIngreso ? formatMoney(m.monto_ars) : `-${formatMoney(m.monto_ars)}`}
                         </span>
                         {m.monto_usd && (
                           <p className="text-xs text-muted-foreground">
@@ -239,23 +251,20 @@ export function Movimientos({ onModalOpen, onEdit }: Props) {
                           </p>
                         )}
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-center gap-1">
-                          <button
-                            onClick={() => onEdit(m)}
-                            className="p-1.5 rounded text-muted-foreground hover:text-white hover:bg-surface-2 transition-colors"
-                            title="Editar"
-                          >
-                            <Edit2 size={13} />
-                          </button>
-                          <button
-                            onClick={() => setConfirmDelete(m.id)}
-                            className="p-1.5 rounded text-muted-foreground hover:text-danger hover:bg-danger/10 transition-colors"
-                            title="Eliminar"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
+                      <td className="px-4 py-3 text-center">
+                        <RowActionsMenu
+                          ariaLabel="Acciones del movimiento"
+                          actions={[
+                            { id: 'editar', label: 'Editar', icon: Edit2, onClick: () => onEdit(m) },
+                            {
+                              id: 'eliminar',
+                              label: 'Eliminar',
+                              icon: Trash2,
+                              tone: 'danger',
+                              onClick: () => setConfirmDelete(m.id),
+                            },
+                          ]}
+                        />
                       </td>
                     </tr>
                   )
