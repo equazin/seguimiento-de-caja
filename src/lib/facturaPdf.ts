@@ -30,9 +30,10 @@ export async function descargarDocumentoPdf(documentoId: string): Promise<void> 
   const isFiscal = documento.tipo_documento === 'factura' && !!arca?.cae
   const titulo = tituloDocumento(documento, arca)
 
-  doc.setDrawColor(60, 60, 70)
-  doc.setLineWidth(0.3)
-  doc.rect(12, 12, pageWidth - 24, 34)
+  doc.setDrawColor(35, 42, 58)
+  doc.setLineWidth(0.35)
+  doc.setFillColor(248, 249, 252)
+  doc.rect(12, 12, pageWidth - 24, 36, 'FD')
   doc.line(pageWidth / 2, 12, pageWidth / 2, 46)
 
   doc.setFont('helvetica', 'bold')
@@ -42,7 +43,7 @@ export async function descargarDocumentoPdf(documentoId: string): Promise<void> 
   doc.setFontSize(9)
   doc.text(`CUIT: ${empresa.cuit}`, 16, 29)
   if (empresa.domicilio_fiscal) doc.text(empresa.domicilio_fiscal, 16, 35)
-  if (empresa.condicion_iva) doc.text(`IVA: ${empresa.condicion_iva}`, 16, 41)
+  if (empresa.condicion_iva) doc.text(`IVA: ${condicionIvaLabel(empresa.condicion_iva)}`, 16, 41)
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(20)
@@ -54,7 +55,7 @@ export async function descargarDocumentoPdf(documentoId: string): Promise<void> 
   doc.text(`Fecha: ${formatDate(documento.fecha)}`, pageWidth - 16, 31, { align: 'right' })
   doc.text(`Interno: ${documento.numero_interno}`, pageWidth - 16, 37, { align: 'right' })
   if (arca) {
-    doc.text(`PV ${String(arca.punto_venta).padStart(4, '0')} - Nro ${String(arca.numero_comprobante ?? 0).padStart(8, '0')}`, pageWidth - 16, 43, { align: 'right' })
+    doc.text(`PV ${String(arca.punto_venta).padStart(4, '0')} - Comp. ${String(arca.numero_comprobante ?? 0).padStart(8, '0')}`, pageWidth - 16, 43, { align: 'right' })
   }
 
   doc.setFont('helvetica', 'bold')
@@ -66,7 +67,8 @@ export async function descargarDocumentoPdf(documentoId: string): Promise<void> 
     ? `${contacto.tipo_documento} ${contacto.numero_documento}`
     : 'Doc. no informado'
   doc.text(documentoContacto, 14, 70)
-  if (contacto?.domicilio) doc.text(contacto.domicilio, 14, 76)
+  if (contacto?.condicion_iva) doc.text(`IVA: ${condicionIvaLabel(contacto.condicion_iva)}`, 14, 76)
+  if (contacto?.domicilio) doc.text(contacto.domicilio, 14, 82)
 
   autoTable(doc, {
     startY: 86,
@@ -110,14 +112,16 @@ export async function descargarDocumentoPdf(documentoId: string): Promise<void> 
 
   if (isFiscal && arca) {
     const qrUrl = buildArcaQrUrl({ documento, empresa, contacto, arca })
-    const qr = await QRCode.toDataURL(qrUrl, { margin: 1, width: 170 })
-    doc.addImage(qr, 'PNG', 14, finalY + 12, 32, 32)
+    const qr = await QRCode.toDataURL(qrUrl, { margin: 2, width: 220 })
+    doc.addImage(qr, 'PNG', 14, finalY + 10, 38, 38)
+    doc.setDrawColor(35, 42, 58)
+    doc.rect(14, finalY + 10, 38, 38)
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(8)
-    doc.text('Comprobante autorizado', 50, finalY + 20)
-    doc.text(`CAE: ${arca.cae}`, 50, finalY + 27)
-    doc.text(`Vto. CAE: ${arca.cae_vencimiento ? formatDate(arca.cae_vencimiento) : '-'}`, 50, finalY + 34)
-    doc.text('QR ARCA', 50, finalY + 41)
+    doc.text('Comprobante autorizado por ARCA', 57, finalY + 19)
+    doc.text(`CAE: ${arca.cae}`, 57, finalY + 27)
+    doc.text(`Vencimiento CAE: ${arca.cae_vencimiento ? formatDate(arca.cae_vencimiento) : '-'}`, 57, finalY + 35)
+    doc.text('QR de validación fiscal', 57, finalY + 43)
   }
 
   if (documento.observaciones) {
@@ -196,6 +200,17 @@ function tituloDocumento(documento: Documento, arca: ArcaComprobante | null): st
   const base = tipoDocumentoLabel(documento.tipo_documento)
   if (!arca) return base
   return `${base} ${documento.letra ?? ''}`.trim()
+}
+
+function condicionIvaLabel(value: string): string {
+  const labels: Record<string, string> = {
+    responsable_inscripto: 'Responsable inscripto',
+    monotributo: 'Monotributo',
+    consumidor_final: 'Consumidor final',
+    exento: 'Exento',
+    no_categorizado: 'No categorizado',
+  }
+  return labels[value] ?? value
 }
 
 function buildArcaQrUrl(input: {

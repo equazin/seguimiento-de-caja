@@ -20,7 +20,7 @@ export function MovimientoFilters({ filtros, onChange, categorias, cuentas }: Pr
   const hasFiltros = Object.values(filtros).some(Boolean)
 
   return (
-    <div className="bg-surface border border-border rounded-xl p-4">
+    <div className="rounded-xl border border-border bg-surface/90 p-4 shadow-xl shadow-black/10">
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <Input
           placeholder="🔍 Buscar..."

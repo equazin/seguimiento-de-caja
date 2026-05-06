@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Input } from '@/components/ui/Input'
+import { PageToolbar } from '@/components/ui/PageToolbar'
 import { SkeletonTable } from '@/components/ui/Skeleton'
 import { ProductoModal } from './ProductoModal'
 import { useProductos, setProductoActivo } from '@/hooks/useCatalogo'
@@ -20,6 +21,7 @@ export function ProductosTab() {
   const data = useProductos(filtros)
   const loading = data === undefined
   const items = data ?? []
+  const stockBajoCount = items.filter(p => p.stockeable && p.stock_actual <= p.stock_minimo).length
 
   function abrirNuevo() {
     setEditar(null)
@@ -43,8 +45,41 @@ export function ProductosTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
-        <div className="relative flex-1">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="rounded-xl border border-border bg-surface/90 p-4 shadow-xl shadow-black/10">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Productos activos</p>
+          <p className="mt-2 text-xl font-bold text-white">{items.filter(p => p.activo).length}</p>
+        </div>
+        <div className="rounded-xl border border-border bg-surface/90 p-4 shadow-xl shadow-black/10">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Alertas de stock</p>
+          <p className={`mt-2 text-xl font-bold ${stockBajoCount > 0 ? 'text-warning' : 'text-success'}`}>{stockBajoCount}</p>
+        </div>
+        <div className="rounded-xl border border-border bg-surface/90 p-4 shadow-xl shadow-black/10">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Servicios</p>
+          <p className="mt-2 text-xl font-bold text-white">{items.filter(p => p.tipo === 'servicio').length}</p>
+        </div>
+      </div>
+
+      <PageToolbar
+        actions={
+          <>
+            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={soloActivos}
+                onChange={e => setSoloActivos(e.target.checked)}
+                className="h-4 w-4 rounded border-border bg-surface-2"
+              />
+              Solo activos
+            </label>
+            <Button onClick={abrirNuevo}>
+              <Plus size={16} />
+              Nuevo producto
+            </Button>
+          </>
+        }
+      >
+        <div className="relative md:col-span-4">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Buscar productos por nombre o código…"
@@ -53,22 +88,9 @@ export function ProductosTab() {
             className="pl-9"
           />
         </div>
-        <label className="flex items-center gap-2 text-sm text-muted-foreground">
-          <input
-            type="checkbox"
-            checked={soloActivos}
-            onChange={e => setSoloActivos(e.target.checked)}
-            className="w-4 h-4 rounded border-border bg-surface-2"
-          />
-          Solo activos
-        </label>
-        <Button onClick={abrirNuevo}>
-          <Plus size={16} />
-          Nuevo producto
-        </Button>
-      </div>
+      </PageToolbar>
 
-      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-border bg-surface/90 shadow-xl shadow-black/10">
         {loading ? (
           <div className="p-4">
             <SkeletonTable rows={5} />
@@ -99,7 +121,7 @@ export function ProductosTab() {
                       <td className="px-4 py-3 text-white">
                         <div className="font-medium">{p.nombre}</div>
                         <div className="flex items-center gap-2 mt-1">
-                          {!p.activo && <Badge>Inactivo</Badge>}
+                          {!p.activo && <Badge variant="inactivo">Inactivo</Badge>}
                           <span className="text-xs text-muted-foreground">{p.unidad_medida}</span>
                         </div>
                       </td>
@@ -121,7 +143,7 @@ export function ProductosTab() {
                             {stockBajo && (
                               <AlertTriangle size={12} className="inline mr-1 text-warning" />
                             )}
-                            {p.stock_actual}
+                            {p.stock_actual} / mín. {p.stock_minimo}
                           </span>
                         ) : (
                           <span className="text-muted">—</span>

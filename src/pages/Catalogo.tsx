@@ -27,22 +27,24 @@ export function Catalogo() {
 
   return (
     <div className="space-y-5">
-      <div className="flex gap-1 border-b border-border">
+      <div className="rounded-xl border border-border bg-surface/90 p-2 shadow-xl shadow-black/10">
+        <div className="flex flex-wrap gap-1">
         {TABS.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             onClick={() => setTab(id)}
             className={cn(
-              'flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors',
+              'flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors',
               tab === id
-                ? 'border-primary text-white'
-                : 'border-transparent text-muted-foreground hover:text-white'
+                ? 'bg-primary/15 text-white'
+                : 'text-muted-foreground hover:bg-surface-2 hover:text-white'
             )}
           >
             <Icon size={16} />
             {label}
           </button>
         ))}
+        </div>
       </div>
 
       {tab === 'clientes' && <ContactosTab tipo="cliente" />}

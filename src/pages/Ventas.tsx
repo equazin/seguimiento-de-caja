@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Plus, Edit2, Trash2, Search, FileText, CheckCircle2, XCircle, Download, Send } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
+import { PageToolbar } from '@/components/ui/PageToolbar'
 import { SkeletonTable } from '@/components/ui/Skeleton'
 import { ConfirmDialog } from '@/components/ui/Dialog'
 import { DocumentoModal } from '@/components/ventas/DocumentoModal'
@@ -37,9 +38,10 @@ const ESTADOS_LABEL: Record<EstadoDocumento, string> = {
 }
 
 function badgeForEstado(estado: EstadoDocumento) {
-  if (estado === 'borrador') return <Badge>{ESTADOS_LABEL[estado]}</Badge>
-  if (estado === 'anulado') return <Badge variant="egreso">{ESTADOS_LABEL[estado]}</Badge>
-  return <Badge variant="ingreso">{ESTADOS_LABEL[estado]}</Badge>
+  if (estado === 'borrador') return <Badge variant="borrador">{ESTADOS_LABEL[estado]}</Badge>
+  if (estado === 'anulado') return <Badge variant="anulado">{ESTADOS_LABEL[estado]}</Badge>
+  if (estado === 'emitido') return <Badge variant="emitido">{ESTADOS_LABEL[estado]}</Badge>
+  return <Badge variant="confirmado">{ESTADOS_LABEL[estado]}</Badge>
 }
 
 export function Ventas() {
@@ -84,6 +86,13 @@ export function Ventas() {
 
   const loading = documentos === undefined
   const items = documentos ?? []
+  const resumen = {
+    total: items.length,
+    confirmados: items.filter(d => d.estado === 'confirmado').length,
+    emitidos: items.filter(d => d.estado === 'emitido').length,
+    rechazados: items.filter(d => arcaMap.get(d.id)?.resultado === 'R').length,
+    importe: items.reduce((acc, d) => acc + Number(d.total ?? 0), 0),
+  }
 
   function abrirNuevo() {
     setEditar(null)
@@ -157,8 +166,23 @@ export function Ventas() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <SummaryTile label="Documentos" value={resumen.total} />
+        <SummaryTile label="Confirmados" value={resumen.confirmados} tone="info" />
+        <SummaryTile label="Emitidos" value={resumen.emitidos} tone="success" />
+        <SummaryTile label="Rechazos ARCA" value={resumen.rechazados} tone={resumen.rechazados > 0 ? 'danger' : 'default'} />
+        <SummaryTile label="Total filtrado" value={formatMoney(resumen.importe)} align="right" className="col-span-2 lg:col-span-1" />
+      </div>
+
+      <PageToolbar
+        actions={
+          <Button onClick={abrirNuevo}>
+            <Plus size={16} />
+            Nuevo documento
+          </Button>
+        }
+      >
         <div className="md:col-span-2 relative">
           <Search size={16} className="absolute left-3 top-9 text-muted-foreground" />
           <Input
@@ -190,16 +214,9 @@ export function Ventas() {
           <option value="confirmado">Confirmado</option>
           <option value="anulado">Anulado</option>
         </Select>
-      </div>
+      </PageToolbar>
 
-      <div className="flex justify-end">
-        <Button onClick={abrirNuevo}>
-          <Plus size={16} />
-          Nuevo documento
-        </Button>
-      </div>
-
-      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-border bg-surface/90 shadow-xl shadow-black/10">
         {loading ? (
           <div className="p-4">
             <SkeletonTable rows={5} />
@@ -230,17 +247,17 @@ export function Ventas() {
                   const cliente = d.cliente_id ? clientesMap.get(d.cliente_id) : null
                   const arca = arcaMap.get(d.id)
                   return (
-                    <tr key={d.id} className="border-t border-border hover:bg-surface-2/40">
+                    <tr key={d.id} className="border-t border-border transition-colors hover:bg-surface-2/60">
                       <td className="px-4 py-3 text-white font-mono text-xs">
                         <div>{d.numero_interno}</div>
                         {arca?.cae && (
-                          <div className="text-[11px] text-muted-foreground font-sans mt-1">
+                          <div className="mt-1 text-[11px] font-sans text-muted-foreground">
                             CAE {arca.cae}
                           </div>
                         )}
                         {arca?.resultado === 'R' && (
-                          <div className="text-[11px] text-danger font-sans mt-1">
-                            Rechazado ARCA
+                          <div className="mt-1 text-[11px] font-sans text-danger">
+                            {arca.errores ? `Rechazado: ${JSON.stringify(arca.errores).slice(0, 90)}` : 'Rechazado ARCA'}
                           </div>
                         )}
                       </td>
@@ -258,10 +275,10 @@ export function Ventas() {
                         {formatMoney(d.total, d.moneda)}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <div className="inline-flex gap-1">
+                        <div className="inline-flex flex-wrap justify-end gap-1">
                           <button
                             onClick={() => abrirEditar(d)}
-                            className="p-1.5 rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-white transition-colors"
+                            className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-white"
                             title="Ver / editar"
                           >
                             <Edit2 size={15} />
@@ -269,7 +286,7 @@ export function Ventas() {
                           {(d.estado === 'emitido' || arca?.cae) && (
                             <button
                               onClick={() => void descargarPdf(d)}
-                              className="p-1.5 rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-white transition-colors"
+                              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-white"
                               title="Descargar PDF"
                             >
                               <Download size={15} />
@@ -278,7 +295,7 @@ export function Ventas() {
                           {arca?.resultado === 'R' && d.estado === 'confirmado' && (
                             <button
                               onClick={() => void emitir(d)}
-                              className="p-1.5 rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-success transition-colors"
+                              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-success"
                               title="Reintentar ARCA"
                             >
                               <Send size={15} />
@@ -288,14 +305,14 @@ export function Ventas() {
                             <>
                               <button
                                 onClick={() => void confirmar(d)}
-                                className="p-1.5 rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-success transition-colors"
+                                className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-success"
                                 title="Confirmar"
                               >
                                 <CheckCircle2 size={15} />
                               </button>
                               <button
                                 onClick={() => setConfirmDelete(d)}
-                                className="p-1.5 rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-danger transition-colors"
+                                className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-danger"
                                 title="Eliminar"
                               >
                                 <Trash2 size={15} />
@@ -307,7 +324,7 @@ export function Ventas() {
                               {d.tipo_documento === 'factura' && (
                                 <button
                                   onClick={() => void emitir(d)}
-                                  className="p-1.5 rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-success transition-colors"
+                                  className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-success"
                                   title="Emitir en ARCA"
                                 >
                                   <Send size={15} />
@@ -315,7 +332,7 @@ export function Ventas() {
                               )}
                               <button
                                 onClick={() => void anular(d)}
-                                className="p-1.5 rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-danger transition-colors"
+                                className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-danger"
                                 title="Anular"
                               >
                                 <XCircle size={15} />
@@ -325,7 +342,7 @@ export function Ventas() {
                           {d.estado === 'anulado' && (
                             <button
                               onClick={() => void reactivar(d)}
-                              className="p-1.5 rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-white transition-colors"
+                              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-white"
                               title="Volver a borrador"
                             >
                               <CheckCircle2 size={15} />
@@ -358,6 +375,38 @@ export function Ventas() {
         confirmLabel="Eliminar"
         danger
       />
+    </div>
+  )
+}
+
+function SummaryTile({
+  label,
+  value,
+  tone = 'default',
+  align = 'left',
+  className,
+}: {
+  label: string
+  value: ReactNode
+  tone?: 'default' | 'success' | 'danger' | 'info'
+  align?: 'left' | 'right'
+  className?: string
+}) {
+  const toneClass = {
+    default: 'text-white',
+    success: 'text-success',
+    danger: 'text-danger',
+    info: 'text-info',
+  }[tone]
+
+  return (
+    <div className={`rounded-xl border border-border bg-surface/90 p-4 shadow-xl shadow-black/10 ${className ?? ''}`}>
+      <p className={`text-xs font-medium uppercase tracking-wide text-muted-foreground ${align === 'right' ? 'text-right' : ''}`}>
+        {label}
+      </p>
+      <p className={`mt-2 text-xl font-bold ${toneClass} ${align === 'right' ? 'text-right' : ''}`}>
+        {value}
+      </p>
     </div>
   )
 }

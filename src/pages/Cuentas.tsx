@@ -74,13 +74,21 @@ export function Cuentas() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-end gap-3">
-        <Button variant="secondary" onClick={() => setModalTransfer(true)}>
-          <ArrowLeftRight size={15} /> Transferir
-        </Button>
-        <Button onClick={abrirNueva}>
-          <Plus size={15} /> Nueva cuenta
-        </Button>
+      <div className="rounded-xl border border-border bg-surface/90 p-5 shadow-xl shadow-black/10">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-white">Cuentas operativas</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Saldos, transferencias y medios disponibles.</p>
+          </div>
+          <div className="flex flex-wrap justify-end gap-3">
+            <Button variant="secondary" onClick={() => setModalTransfer(true)}>
+              <ArrowLeftRight size={15} /> Transferir
+            </Button>
+            <Button onClick={abrirNueva}>
+              <Plus size={15} /> Nueva cuenta
+            </Button>
+          </div>
+        </div>
       </div>
 
       {!cuentasConSaldo ? (

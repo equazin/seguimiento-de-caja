@@ -12,15 +12,24 @@ import { Compras } from '@/pages/Compras'
 import { Catalogo } from '@/pages/Catalogo'
 import { Fiscal } from '@/pages/Fiscal'
 import { MovimientoModal } from '@/components/movimientos/MovimientoModal'
+import { DocumentoModal } from '@/components/ventas/DocumentoModal'
+import { ContactoModal } from '@/components/catalogo/ContactoModal'
+import { ProductoModal } from '@/components/catalogo/ProductoModal'
 import { LoginPage } from '@/components/auth/LoginPage'
 import { AuthProvider, useAuth } from '@/lib/auth'
 import { seedDatosIniciales } from '@/lib/seed'
-import type { Movimiento } from '@/db/schema'
+import type { Movimiento, TipoOperacion } from '@/db/schema'
+import type { GlobalAction } from '@/components/ui/ActionMenu'
 
 function AppShell() {
   const { session, loading } = useAuth()
   const [modalOpen, setModalOpen] = useState(false)
   const [movimientoEditar, setMovimientoEditar] = useState<Movimiento | null>(null)
+  const [documentoOpen, setDocumentoOpen] = useState(false)
+  const [documentoTipo, setDocumentoTipo] = useState<TipoOperacion>('venta')
+  const [contactoOpen, setContactoOpen] = useState(false)
+  const [contactoTipo, setContactoTipo] = useState<'cliente' | 'proveedor'>('cliente')
+  const [productoOpen, setProductoOpen] = useState(false)
   const [seeded, setSeeded] = useState(false)
   const [seedError, setSeedError] = useState<string | null>(null)
 
@@ -58,6 +67,24 @@ function AppShell() {
   const handleCloseModal = () => {
     setModalOpen(false)
     setMovimientoEditar(null)
+  }
+
+  const handleGlobalAction = (action: GlobalAction) => {
+    if (action === 'movimiento') {
+      handleNuevoMovimiento()
+      return
+    }
+    if (action === 'venta' || action === 'compra') {
+      setDocumentoTipo(action)
+      setDocumentoOpen(true)
+      return
+    }
+    if (action === 'cliente' || action === 'proveedor') {
+      setContactoTipo(action)
+      setContactoOpen(true)
+      return
+    }
+    setProductoOpen(true)
   }
 
   if (loading) {
@@ -114,7 +141,7 @@ function AppShell() {
         }}
       />
       <Routes>
-        <Route element={<Layout onNuevoMovimiento={handleNuevoMovimiento} />}>
+        <Route element={<Layout onNuevoMovimiento={handleNuevoMovimiento} onGlobalAction={handleGlobalAction} />}>
           <Route
             index
             element={<Dashboard onEditMovimiento={handleEditMovimiento} />}
@@ -141,6 +168,23 @@ function AppShell() {
         open={modalOpen}
         onClose={handleCloseModal}
         movimiento={movimientoEditar}
+      />
+      <DocumentoModal
+        open={documentoOpen}
+        onClose={() => setDocumentoOpen(false)}
+        documento={null}
+        tipoOperacion={documentoTipo}
+      />
+      <ContactoModal
+        open={contactoOpen}
+        onClose={() => setContactoOpen(false)}
+        tipo={contactoTipo}
+        contacto={null}
+      />
+      <ProductoModal
+        open={productoOpen}
+        onClose={() => setProductoOpen(false)}
+        producto={null}
       />
     </BrowserRouter>
   )

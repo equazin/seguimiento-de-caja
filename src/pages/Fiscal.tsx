@@ -3,6 +3,7 @@ import { CheckCircle2, FileText, KeyRound, PlugZap, ShieldCheck } from 'lucide-r
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
+import { StatusPanel } from '@/components/ui/StatusPanel'
 import { SkeletonTable } from '@/components/ui/Skeleton'
 import { supabaseAfip } from '@/db/schema'
 import { useSupabaseQuery } from '@/hooks/useSupabaseQuery'
@@ -66,23 +67,14 @@ export function Fiscal() {
 
   return (
     <div className="space-y-6">
-      <div className="bg-surface border border-border rounded-xl p-6">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-xl bg-success/15 border border-success/30 flex items-center justify-center flex-shrink-0">
-              <ShieldCheck size={22} className="text-success" />
-            </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-lg font-bold text-white">Fiscal</h2>
-                <Badge variant="ingreso">Homologación activa</Badge>
-              </div>
-              <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-                WSAA y WSFEv1 están configurados para homologación. La emisión real en producción queda bloqueada hasta Fase 6.
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-2">
+      <StatusPanel
+        icon={ShieldCheck}
+        title="Fiscal"
+        tone="success"
+        badge={<Badge variant="activo">Homologación activa</Badge>}
+        description="WSAA y WSFEv1 están configurados para homologación. La emisión real en producción queda bloqueada hasta Fase 6."
+        actions={
+          <>
             <Button variant="secondary" onClick={probarConexion} loading={testing}>
               <PlugZap size={16} />
               Probar WSFE
@@ -91,8 +83,9 @@ export function Fiscal() {
               <KeyRound size={16} />
               Probar WSAA
             </Button>
-          </div>
-        </div>
+          </>
+        }
+      >
         {(lastDummy || lastLogin) && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-5 text-xs">
             {lastDummy && (
@@ -107,10 +100,10 @@ export function Fiscal() {
             )}
           </div>
         )}
-      </div>
+      </StatusPanel>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <div className="bg-surface border border-border rounded-xl p-5 space-y-3">
+        <div className="rounded-xl border border-border bg-surface/90 p-5 shadow-xl shadow-black/10 space-y-3">
           <h2 className="text-sm font-semibold text-white">Empresa emisora</h2>
           {empresaLoading && (
             <p className="text-xs text-muted-foreground">Cargando empresa...</p>
@@ -145,7 +138,7 @@ export function Fiscal() {
           )}
         </div>
 
-        <div className="bg-surface border border-border rounded-xl p-5 space-y-3">
+        <div className="rounded-xl border border-border bg-surface/90 p-5 shadow-xl shadow-black/10 space-y-3">
           <h2 className="text-sm font-semibold text-white">Último comprobante ARCA</h2>
           {comprobantes === undefined ? (
             <SkeletonTable rows={2} />
@@ -183,7 +176,7 @@ export function Fiscal() {
         </div>
       </div>
 
-      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-border bg-surface/90 shadow-xl shadow-black/10">
         <div className="px-5 py-4 border-b border-border flex items-center gap-2">
           <FileText size={16} className="text-muted-foreground" />
           <h2 className="text-sm font-semibold text-white">Puntos de venta</h2>
@@ -214,7 +207,7 @@ export function Fiscal() {
                     <td className="px-4 py-3 text-white">{pv.nombre}</td>
                     <td className="px-4 py-3 text-muted-foreground">{pv.tipo_emision}</td>
                     <td className="px-4 py-3">
-                      <Badge variant={pv.activo ? 'ingreso' : undefined}>
+                      <Badge variant={pv.activo ? 'activo' : 'inactivo'}>
                         {pv.activo ? 'Activo' : 'Inactivo'}
                       </Badge>
                     </td>

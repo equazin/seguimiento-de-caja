@@ -20,7 +20,7 @@ export function KPICard({ titulo, valor, icono: Icon, variante = 'default', subt
   const colors = colorMap[variante]
 
   return (
-    <div className={cn('bg-surface border rounded-xl p-5 border-border')}>
+    <div className={cn('rounded-xl border border-border bg-surface/90 p-5 shadow-xl shadow-black/10')}>
       <div className="flex items-start justify-between mb-4">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{titulo}</p>
         <div className={cn('p-2 rounded-lg', colors.bg, colors.border, 'border')}>

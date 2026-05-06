@@ -10,6 +10,23 @@
   body {
     @apply bg-background text-white font-sans antialiased;
     font-family: 'Inter', system-ui, sans-serif;
+    background:
+      radial-gradient(circle at top left, rgba(109, 106, 248, 0.14), transparent 30rem),
+      linear-gradient(180deg, #0a0d16 0%, #070a12 46%, #060811 100%);
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    @apply outline-none;
+  }
+
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    @apply ring-2 ring-primary/45 ring-offset-2 ring-offset-background;
   }
 
   ::-webkit-scrollbar {
@@ -18,16 +35,16 @@
   }
 
   ::-webkit-scrollbar-track {
-    background: #1A1D27;
+    background: #0b0f19;
   }
 
   ::-webkit-scrollbar-thumb {
-    background: #2A2D3A;
+    background: #2f3850;
     border-radius: 3px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: #3A3D4A;
+    background: #46516f;
   }
 }
 

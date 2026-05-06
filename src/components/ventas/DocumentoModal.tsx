@@ -242,65 +242,76 @@ export function DocumentoModal({
   const contactoEmpty = tipoOperacion === 'venta' ? 'Consumidor final' : 'Sin proveedor'
 
   return (
-    <Dialog open={open} onClose={onClose} title={titulo} size="xl">
+    <Dialog open={open} onClose={onClose} title={titulo} size="2xl">
       <form className="space-y-5" onSubmit={e => onSubmit(e, form.estado)}>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Select
-            label="Tipo"
-            value={form.tipo_documento}
-            onChange={e => update('tipo_documento', e.target.value as TipoDocumentoForm)}
-            disabled={!!documento}
-          >
-            {TIPOS_DOCUMENTO.map(t => (
-              <option key={t.value} value={t.value}>{t.label}</option>
-            ))}
-          </Select>
-          <Select
-            label={contactoLabel}
-            value={form.contacto_id}
-            onChange={e => update('contacto_id', e.target.value)}
-          >
-            <option value="">— {contactoEmpty} —</option>
-            {(contactos ?? []).map(c => (
-              <option key={c.id} value={c.id}>
-                {c.razon_social}
-              </option>
-            ))}
-          </Select>
-          <Input
-            label="Fecha"
-            type="date"
-            value={form.fecha}
-            onChange={e => update('fecha', e.target.value)}
-            required
-          />
-          <Input
-            label="Vencimiento"
-            type="date"
-            value={form.fecha_vencimiento}
-            onChange={e => update('fecha_vencimiento', e.target.value)}
-          />
-          <Select
-            label="Moneda"
-            value={form.moneda}
-            onChange={e => update('moneda', e.target.value as 'ARS' | 'USD')}
-          >
-            <option value="ARS">ARS</option>
-            <option value="USD">USD</option>
-          </Select>
-          {form.moneda === 'USD' && (
+        <div className="rounded-xl border border-border bg-surface-2/70 p-4">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Encabezado</p>
+              <h3 className="text-sm font-semibold text-white">{tipoOperacion === 'venta' ? 'Documento de venta' : 'Documento de compra'}</h3>
+            </div>
+            <span className="rounded-md border border-border bg-surface px-2 py-1 text-xs font-medium text-muted-foreground">
+              {documento?.estado ?? 'nuevo'}
+            </span>
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <Select
+              label="Tipo"
+              value={form.tipo_documento}
+              onChange={e => update('tipo_documento', e.target.value as TipoDocumentoForm)}
+              disabled={!!documento}
+            >
+              {TIPOS_DOCUMENTO.map(t => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </Select>
+            <Select
+              label={contactoLabel}
+              value={form.contacto_id}
+              onChange={e => update('contacto_id', e.target.value)}
+            >
+              <option value="">— {contactoEmpty} —</option>
+              {(contactos ?? []).map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.razon_social}
+                </option>
+              ))}
+            </Select>
             <Input
-              label="Tipo de cambio"
-              type="number"
-              step="0.01"
-              min="0"
-              value={form.tipo_cambio}
-              onChange={e => update('tipo_cambio', e.target.value)}
+              label="Fecha"
+              type="date"
+              value={form.fecha}
+              onChange={e => update('fecha', e.target.value)}
+              required
             />
-          )}
+            <Input
+              label="Vencimiento"
+              type="date"
+              value={form.fecha_vencimiento}
+              onChange={e => update('fecha_vencimiento', e.target.value)}
+            />
+            <Select
+              label="Moneda"
+              value={form.moneda}
+              onChange={e => update('moneda', e.target.value as 'ARS' | 'USD')}
+            >
+              <option value="ARS">ARS</option>
+              <option value="USD">USD</option>
+            </Select>
+            {form.moneda === 'USD' && (
+              <Input
+                label="Tipo de cambio"
+                type="number"
+                step="0.01"
+                min="0"
+                value={form.tipo_cambio}
+                onChange={e => update('tipo_cambio', e.target.value)}
+              />
+            )}
+          </div>
         </div>
 
-        <div className="space-y-3">
+        <div className="rounded-xl border border-border bg-surface-2/70 p-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-white">Items</h3>
             <Button
@@ -320,7 +331,7 @@ export function DocumentoModal({
               No hay items. Agregá al menos uno.
             </div>
           ) : (
-            <div className="overflow-x-auto bg-surface-2 border border-border rounded-lg">
+            <div className="overflow-x-auto rounded-lg border border-border bg-surface">
               <table className="w-full text-sm">
                 <thead className="text-xs uppercase text-muted-foreground">
                   <tr>
@@ -337,7 +348,7 @@ export function DocumentoModal({
                   {form.items.map((it, idx) => {
                     const subtotal = it.cantidad * it.precio_unitario * (1 - it.bonificacion / 100)
                     return (
-                      <tr key={idx} className="border-t border-border">
+                      <tr key={idx} className="border-t border-border align-top">
                         <td className="px-3 py-2">
                           <select
                             value={it.producto_id ?? ''}
@@ -428,13 +439,13 @@ export function DocumentoModal({
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_320px]">
           <Textarea
             label="Observaciones"
             value={form.observaciones}
             onChange={e => update('observaciones', e.target.value)}
           />
-          <div className="bg-surface-2 border border-border rounded-lg p-4 space-y-2 text-sm">
+          <div className="space-y-2 rounded-xl border border-border bg-surface-2/70 p-4 text-sm">
             <div className="flex justify-between text-muted-foreground">
               <span>Subtotal neto</span>
               <span className="text-white">{formatMoney(totales.subtotal, form.moneda)}</span>
@@ -456,9 +467,13 @@ export function DocumentoModal({
           </div>
         </div>
 
-        {error && <p className="text-xs text-danger">{error}</p>}
+        {error && (
+          <div className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
+            {error}
+          </div>
+        )}
 
-        <div className="flex flex-col sm:flex-row justify-end gap-2 pt-3 border-t border-border">
+        <div className="sticky bottom-0 -mx-6 -mb-5 flex flex-col justify-end gap-2 border-t border-border bg-surface/95 px-6 py-4 backdrop-blur sm:flex-row">
           <Button type="button" variant="ghost" onClick={onClose}>
             Cancelar
           </Button>

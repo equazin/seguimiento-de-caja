@@ -1,51 +1,41 @@
-import { Plus, Bell, LogOut } from 'lucide-react'
-import { cn } from '@/lib/formatters'
+import { Bell, LogOut } from 'lucide-react'
+import { ActionMenu, type GlobalAction } from '@/components/ui/ActionMenu'
 import { useAuth } from '@/lib/auth'
 
 interface HeaderProps {
   titulo: string
   subtitulo?: string
-  onNuevoMovimiento: () => void
+  onGlobalAction: (action: GlobalAction) => void
 }
 
-export function Header({ titulo, subtitulo, onNuevoMovimiento }: HeaderProps) {
+export function Header({ titulo, subtitulo, onGlobalAction }: HeaderProps) {
   const { session, signOut } = useAuth()
   const email = session?.user.email ?? ''
 
   return (
-    <header className="flex items-center justify-between px-6 py-4 border-b border-border bg-surface">
+    <header className="flex items-center justify-between gap-4 border-b border-border bg-surface/90 px-6 py-4 backdrop-blur">
       <div>
-        <h1 className="text-xl font-bold text-white">{titulo}</h1>
-        {subtitulo && <p className="text-sm text-muted-foreground mt-0.5">{subtitulo}</p>}
+        <h1 className="text-xl font-bold tracking-tight text-white">{titulo}</h1>
+        {subtitulo && <p className="mt-0.5 text-sm text-muted-foreground">{subtitulo}</p>}
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         {email && (
-          <span className="hidden sm:inline text-xs text-muted-foreground mr-1">{email}</span>
+          <span className="hidden max-w-[18rem] truncate text-xs text-muted-foreground lg:inline">{email}</span>
         )}
         <button
-          className="p-2 rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-white transition-colors"
+          className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-white"
           title="Notificaciones"
         >
           <Bell size={18} />
         </button>
         <button
           onClick={() => void signOut()}
-          className="p-2 rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-white transition-colors"
+          className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-white"
           title="Cerrar sesión"
         >
           <LogOut size={18} />
         </button>
-        <button
-          onClick={onNuevoMovimiento}
-          className={cn(
-            'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold',
-            'bg-primary hover:bg-primary-hover text-white transition-colors'
-          )}
-          title="Nuevo movimiento (N)"
-        >
-          <Plus size={16} />
-          <span>Nuevo</span>
-        </button>
+        <ActionMenu onAction={onGlobalAction} />
       </div>
     </header>
   )

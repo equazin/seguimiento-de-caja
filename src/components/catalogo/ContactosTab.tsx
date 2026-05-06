@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Input } from '@/components/ui/Input'
+import { PageToolbar } from '@/components/ui/PageToolbar'
 import { SkeletonTable } from '@/components/ui/Skeleton'
 import { ContactoModal } from './ContactoModal'
 import {
@@ -67,8 +68,26 @@ export function ContactosTab({ tipo }: ContactosTabProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
-        <div className="relative flex-1">
+      <PageToolbar
+        actions={
+          <>
+            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={soloActivos}
+                onChange={e => setSoloActivos(e.target.checked)}
+                className="h-4 w-4 rounded border-border bg-surface-2"
+              />
+              Solo activos
+            </label>
+            <Button onClick={abrirNuevo}>
+              <Plus size={16} />
+              Nuevo {tipo === 'cliente' ? 'cliente' : 'proveedor'}
+            </Button>
+          </>
+        }
+      >
+        <div className="relative md:col-span-4">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder={`Buscar ${tipo === 'cliente' ? 'clientes' : 'proveedores'}…`}
@@ -77,22 +96,9 @@ export function ContactosTab({ tipo }: ContactosTabProps) {
             className="pl-9"
           />
         </div>
-        <label className="flex items-center gap-2 text-sm text-muted-foreground">
-          <input
-            type="checkbox"
-            checked={soloActivos}
-            onChange={e => setSoloActivos(e.target.checked)}
-            className="w-4 h-4 rounded border-border bg-surface-2"
-          />
-          Solo activos
-        </label>
-        <Button onClick={abrirNuevo}>
-          <Plus size={16} />
-          Nuevo {tipo === 'cliente' ? 'cliente' : 'proveedor'}
-        </Button>
-      </div>
+      </PageToolbar>
 
-      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-border bg-surface/90 shadow-xl shadow-black/10">
         {loading ? (
           <div className="p-4">
             <SkeletonTable rows={5} />
@@ -123,7 +129,7 @@ export function ContactosTab({ tipo }: ContactosTabProps) {
                         <div className="text-xs text-muted-foreground">{c.nombre_fantasia}</div>
                       )}
                       {!c.activo && (
-                        <Badge className="mt-1">Inactivo</Badge>
+                        <Badge variant="inactivo" className="mt-1">Inactivo</Badge>
                       )}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">

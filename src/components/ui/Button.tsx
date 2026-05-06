@@ -2,7 +2,7 @@ import { forwardRef } from 'react'
 import { cn } from '@/lib/formatters'
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'success'
+  variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'success' | 'warning'
   size?: 'sm' | 'md' | 'lg'
   loading?: boolean
 }
@@ -15,12 +15,14 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         disabled={disabled || loading}
         className={cn(
           'inline-flex items-center justify-center gap-2 font-medium rounded-lg transition-colors',
-          'disabled:opacity-50 disabled:cursor-not-allowed',
-          variant === 'primary' && 'bg-primary hover:bg-primary-hover text-white',
+          'shadow-sm disabled:opacity-50 disabled:cursor-not-allowed',
+          variant === 'primary' && 'bg-primary hover:bg-primary-hover text-white shadow-primary/20',
           variant === 'secondary' && 'bg-surface-2 hover:bg-surface-3 text-white border border-border',
-          variant === 'ghost' && 'bg-transparent hover:bg-surface-2 text-muted-foreground hover:text-white',
-          variant === 'danger' && 'bg-danger hover:bg-red-600 text-white',
-          variant === 'success' && 'bg-success hover:bg-green-600 text-white',
+          variant === 'outline' && 'bg-transparent hover:bg-surface-2 text-white border border-border',
+          variant === 'ghost' && 'bg-transparent hover:bg-surface-2 text-muted-foreground hover:text-white shadow-none',
+          variant === 'danger' && 'bg-danger hover:bg-danger/85 text-white',
+          variant === 'success' && 'bg-success hover:bg-success/85 text-background',
+          variant === 'warning' && 'bg-warning hover:bg-warning/85 text-background',
           size === 'sm' && 'px-3 py-1.5 text-xs',
           size === 'md' && 'px-4 py-2 text-sm',
           size === 'lg' && 'px-5 py-2.5 text-base',

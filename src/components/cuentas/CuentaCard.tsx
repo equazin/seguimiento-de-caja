@@ -26,7 +26,7 @@ export function CuentaCard({ cuenta, onEdit, onDesactivar }: Props) {
   const color = TIPO_COLORS[cuenta.tipo]
 
   return (
-    <div className="bg-surface border border-border rounded-xl p-5 hover:border-primary/30 transition-colors">
+    <div className="rounded-xl border border-border bg-surface/90 p-5 shadow-xl shadow-black/10 transition-colors hover:border-primary/30">
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
           <div className="p-2.5 rounded-lg" style={{ backgroundColor: `${color}22` }}>

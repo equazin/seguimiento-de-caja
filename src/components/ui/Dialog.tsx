@@ -7,7 +7,7 @@ interface DialogProps {
   onClose: () => void
   title: string
   children: React.ReactNode
-  size?: 'sm' | 'md' | 'lg' | 'xl'
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl'
 }
 
 const SIZE_CLASSES = {
@@ -15,6 +15,7 @@ const SIZE_CLASSES = {
   md: 'max-w-lg',
   lg: 'max-w-2xl',
   xl: 'max-w-4xl',
+  '2xl': 'max-w-6xl',
 }
 
 export function Dialog({ open, onClose, title, children, size = 'md' }: DialogProps) {
@@ -39,6 +40,7 @@ export function Dialog({ open, onClose, title, children, size = 'md' }: DialogPr
         ref={ref}
         className={cn(
           'relative w-full bg-surface border border-border rounded-2xl shadow-2xl',
+          'shadow-black/40',
           'max-h-[90vh] flex flex-col',
           SIZE_CLASSES[size]
         )}

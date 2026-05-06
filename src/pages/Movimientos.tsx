@@ -110,7 +110,7 @@ export function Movimientos({ onModalOpen, onEdit }: Props) {
         />
 
         {/* Toolbar */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface/90 p-4 shadow-xl shadow-black/10 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <p className="text-sm text-muted-foreground">
               {sorted.length} movimiento{sorted.length !== 1 ? 's' : ''}
@@ -129,7 +129,7 @@ export function Movimientos({ onModalOpen, onEdit }: Props) {
         </div>
 
         {/* Tabla */}
-        <div className="bg-surface border border-border rounded-xl overflow-hidden">
+        <div className="overflow-hidden rounded-xl border border-border bg-surface/90 shadow-xl shadow-black/10">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>

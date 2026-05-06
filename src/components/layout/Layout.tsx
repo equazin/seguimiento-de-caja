@@ -2,10 +2,12 @@ import { useState, useEffect, useCallback } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { Header } from './Header'
+import type { GlobalAction } from '@/components/ui/ActionMenu'
 import { cn } from '@/lib/formatters'
 
 interface LayoutProps {
   onNuevoMovimiento: () => void
+  onGlobalAction: (action: GlobalAction) => void
 }
 
 const TITULOS: Record<string, { titulo: string; subtitulo?: string }> = {
@@ -20,7 +22,7 @@ const TITULOS: Record<string, { titulo: string; subtitulo?: string }> = {
   '/configuracion': { titulo: 'Configuración', subtitulo: 'Ajustes del sistema' },
 }
 
-export function Layout({ onNuevoMovimiento }: LayoutProps) {
+export function Layout({ onNuevoMovimiento, onGlobalAction }: LayoutProps) {
   const [collapsed, setCollapsed] = useState(false)
   const location = useLocation()
   const info = TITULOS[location.pathname] ?? { titulo: 'Bartez Caja' }
@@ -40,18 +42,18 @@ export function Layout({ onNuevoMovimiento }: LayoutProps) {
   }, [handleKeyDown])
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
+    <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(c => !c)} />
       <div className={cn(
-        'flex flex-col flex-1 overflow-hidden transition-all duration-300',
+        'flex flex-1 flex-col overflow-hidden transition-all duration-300',
         collapsed ? 'ml-16' : 'ml-60'
       )}>
         <Header
           titulo={info.titulo}
           subtitulo={info.subtitulo}
-          onNuevoMovimiento={onNuevoMovimiento}
+          onGlobalAction={onGlobalAction}
         />
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className="flex-1 overflow-y-auto p-5 lg:p-6">
           <Outlet />
         </main>
       </div>

@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Plus, Edit2, Trash2, Search, FileText, CheckCircle2, XCircle, Download } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
+import { PageToolbar } from '@/components/ui/PageToolbar'
 import { SkeletonTable } from '@/components/ui/Skeleton'
 import { ConfirmDialog } from '@/components/ui/Dialog'
 import { DocumentoModal } from '@/components/ventas/DocumentoModal'
@@ -35,9 +36,9 @@ const ESTADOS_LABEL: Record<EstadoDocumento, string> = {
 }
 
 function badgeForEstado(estado: EstadoDocumento) {
-  if (estado === 'borrador') return <Badge>{ESTADOS_LABEL[estado]}</Badge>
-  if (estado === 'anulado') return <Badge variant="egreso">{ESTADOS_LABEL[estado]}</Badge>
-  return <Badge variant="ingreso">{ESTADOS_LABEL[estado]}</Badge>
+  if (estado === 'borrador') return <Badge variant="borrador">{ESTADOS_LABEL[estado]}</Badge>
+  if (estado === 'anulado') return <Badge variant="anulado">{ESTADOS_LABEL[estado]}</Badge>
+  return <Badge variant="confirmado">{ESTADOS_LABEL[estado]}</Badge>
 }
 
 export function Compras() {
@@ -76,6 +77,13 @@ export function Compras() {
 
   const loading = documentos === undefined
   const items = documentos ?? []
+  const resumen = {
+    total: items.length,
+    borradores: items.filter(d => d.estado === 'borrador').length,
+    confirmados: items.filter(d => d.estado === 'confirmado').length,
+    anulados: items.filter(d => d.estado === 'anulado').length,
+    importe: items.reduce((acc, d) => acc + Number(d.total ?? 0), 0),
+  }
 
   function abrirNuevo() {
     setEditar(null)
@@ -139,8 +147,23 @@ export function Compras() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <SummaryTile label="Documentos" value={resumen.total} />
+        <SummaryTile label="Borradores" value={resumen.borradores} />
+        <SummaryTile label="Confirmados" value={resumen.confirmados} tone="info" />
+        <SummaryTile label="Anulados" value={resumen.anulados} tone={resumen.anulados > 0 ? 'danger' : 'default'} />
+        <SummaryTile label="Total filtrado" value={formatMoney(resumen.importe)} align="right" className="col-span-2 lg:col-span-1" />
+      </div>
+
+      <PageToolbar
+        actions={
+          <Button onClick={abrirNuevo}>
+            <Plus size={16} />
+            Nuevo documento
+          </Button>
+        }
+      >
         <div className="md:col-span-2 relative">
           <Search size={16} className="absolute left-3 top-9 text-muted-foreground" />
           <Input
@@ -171,16 +194,9 @@ export function Compras() {
           <option value="confirmado">Confirmado</option>
           <option value="anulado">Anulado</option>
         </Select>
-      </div>
+      </PageToolbar>
 
-      <div className="flex justify-end">
-        <Button onClick={abrirNuevo}>
-          <Plus size={16} />
-          Nuevo documento
-        </Button>
-      </div>
-
-      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-border bg-surface/90 shadow-xl shadow-black/10">
         {loading ? (
           <div className="p-4">
             <SkeletonTable rows={5} />
@@ -210,7 +226,7 @@ export function Compras() {
                 {items.map(d => {
                   const proveedor = d.proveedor_id ? proveedoresMap.get(d.proveedor_id) : null
                   return (
-                    <tr key={d.id} className="border-t border-border hover:bg-surface-2/40">
+                    <tr key={d.id} className="border-t border-border transition-colors hover:bg-surface-2/60">
                       <td className="px-4 py-3 text-white font-mono text-xs">
                         {d.numero_interno}
                       </td>
@@ -228,7 +244,7 @@ export function Compras() {
                         {formatMoney(d.total, d.moneda)}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <div className="inline-flex gap-1">
+                        <div className="inline-flex flex-wrap justify-end gap-1">
                           <button
                             onClick={() => abrirEditar(d)}
                             className="p-1.5 rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-white transition-colors"
@@ -308,6 +324,37 @@ export function Compras() {
         confirmLabel="Eliminar"
         danger
       />
+    </div>
+  )
+}
+
+function SummaryTile({
+  label,
+  value,
+  tone = 'default',
+  align = 'left',
+  className,
+}: {
+  label: string
+  value: ReactNode
+  tone?: 'default' | 'danger' | 'info'
+  align?: 'left' | 'right'
+  className?: string
+}) {
+  const toneClass = {
+    default: 'text-white',
+    danger: 'text-danger',
+    info: 'text-info',
+  }[tone]
+
+  return (
+    <div className={`rounded-xl border border-border bg-surface/90 p-4 shadow-xl shadow-black/10 ${className ?? ''}`}>
+      <p className={`text-xs font-medium uppercase tracking-wide text-muted-foreground ${align === 'right' ? 'text-right' : ''}`}>
+        {label}
+      </p>
+      <p className={`mt-2 text-xl font-bold ${toneClass} ${align === 'right' ? 'text-right' : ''}`}>
+        {value}
+      </p>
     </div>
   )
 }
