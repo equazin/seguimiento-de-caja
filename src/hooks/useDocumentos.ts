@@ -21,6 +21,9 @@ import {
 import { todayStr } from '@/lib/formatters'
 import { v4 as uuidv4 } from 'uuid'
 
+const TIPOS_NOTA = new Set<TipoDocumentoComercial>(['nota_credito', 'nota_debito'])
+const ESTADOS_CONTABLES = new Set<EstadoDocumento>(['confirmado', 'emitido'])
+
 export interface DocumentoFiltros {
   tipoOperacion: TipoOperacion
   tipoDocumento?: TipoDocumentoComercial | ''
@@ -181,6 +184,10 @@ interface CrearDocumentoInput {
 }
 
 export async function crearDocumento(input: CrearDocumentoInput): Promise<Documento> {
+  if (TIPOS_NOTA.has(input.tipoDocumento)) {
+    throw new Error('Las notas se crean desde una factura')
+  }
+
   const { items, totales } = calcularTotales(input.items)
   const numero = await siguienteNumeroInterno(
     input.empresaId,
@@ -250,6 +257,26 @@ interface ActualizarDocumentoInput {
 
 export async function actualizarDocumento(input: ActualizarDocumentoInput): Promise<void> {
   const { items, totales } = calcularTotales(input.items)
+  const actual = await getDocumentoById(input.id)
+  const documentoValidado: Documento = {
+    ...actual,
+    cliente_id: input.clienteId,
+    proveedor_id: input.proveedorId,
+    fecha: input.fecha,
+    fecha_vencimiento: input.fechaVencimiento,
+    moneda: input.moneda,
+    tipo_cambio: input.tipoCambio,
+    subtotal: totales.subtotal,
+    iva_total: totales.iva_total,
+    exento: totales.exento,
+    no_gravado: totales.no_gravado,
+    percepciones: totales.percepciones,
+    total: totales.total,
+    observaciones: input.observaciones,
+    cuenta_id: input.cuentaId,
+    estado: input.estado,
+  }
+  await validarNotaInterna(documentoValidado)
 
   const { error: updateError } = await supabaseAfip
     .from('documentos')
@@ -301,6 +328,9 @@ export async function cambiarEstadoDocumento(
   id: string,
   estado: EstadoDocumento
 ): Promise<void> {
+  const documento = await getDocumentoById(id)
+  await validarNotaInterna({ ...documento, estado })
+
   const { error } = await supabaseAfip
     .from('documentos')
     .update({ estado })
@@ -465,6 +495,12 @@ export async function crearNotaDesdeDocumento(
   if (origen.estado === 'borrador' || origen.estado === 'anulado') {
     throw new Error('La factura debe estar confirmada o emitida')
   }
+  if (tipoNota === 'nota_credito') {
+    const saldo = await calcularSaldoPendienteFactura(origen.id)
+    if (saldo <= 0) {
+      throw new Error('La factura no tiene saldo pendiente para una nota de credito')
+    }
+  }
 
   const { data: itemsData, error: itemsError } = await supabaseAfip
     .from('documento_items')
@@ -571,6 +607,114 @@ export async function emitirDocumentoArca(id: string): Promise<unknown> {
   }
   notifyDataChanged()
   return data
+}
+
+async function getDocumentoById(id: string): Promise<Documento> {
+  const { data, error } = await supabaseAfip
+    .from('documentos')
+    .select('*')
+    .eq('id', id)
+    .single()
+  if (error) throw error
+  return data as Documento
+}
+
+async function validarNotaInterna(documento: Documento): Promise<void> {
+  if (!TIPOS_NOTA.has(documento.tipo_documento)) return
+
+  const relacion = await getRelacionFacturaOrigen(documento.id)
+  if (!relacion) {
+    throw new Error('La nota debe estar vinculada a una factura origen')
+  }
+
+  if (documento.tipo_documento === 'nota_credito' && relacion.tipo_relacion !== 'anulacion') {
+    throw new Error('La nota de credito debe estar relacionada como anulacion')
+  }
+  if (documento.tipo_documento === 'nota_debito' && relacion.tipo_relacion !== 'ajuste') {
+    throw new Error('La nota de debito debe estar relacionada como ajuste')
+  }
+
+  const origen = await getDocumentoById(relacion.origen_id)
+  if (origen.tipo_documento !== 'factura') {
+    throw new Error('La nota debe tener una factura como origen')
+  }
+  if (origen.estado === 'borrador' || origen.estado === 'anulado') {
+    throw new Error('La factura origen debe estar confirmada o emitida')
+  }
+  if (origen.empresa_id !== documento.empresa_id || origen.tipo_operacion !== documento.tipo_operacion) {
+    throw new Error('La nota debe pertenecer a la misma empresa y operacion que la factura origen')
+  }
+  if (origen.moneda !== documento.moneda) {
+    throw new Error('La nota debe mantener la misma moneda que la factura origen')
+  }
+  if (origen.cliente_id !== documento.cliente_id || origen.proveedor_id !== documento.proveedor_id) {
+    throw new Error('La nota debe mantener el mismo cliente o proveedor que la factura origen')
+  }
+  if (Number(documento.total) <= 0) {
+    throw new Error('La nota necesita un total mayor a cero')
+  }
+
+  if (documento.tipo_documento === 'nota_credito' && ESTADOS_CONTABLES.has(documento.estado)) {
+    const saldo = await calcularSaldoPendienteFactura(origen.id, documento.id)
+    if (Number(documento.total) - saldo > 0.005) {
+      throw new Error(
+        `La nota de credito supera el saldo pendiente de la factura (${formatSaldo(saldo)} ${origen.moneda})`
+      )
+    }
+  }
+}
+
+async function getRelacionFacturaOrigen(
+  notaId: string
+): Promise<DocumentoRelacion | null> {
+  const { data, error } = await supabaseAfip
+    .from('documento_relaciones')
+    .select('*')
+    .eq('destino_id', notaId)
+    .in('tipo_relacion', ['anulacion', 'ajuste'])
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return (data ?? null) as DocumentoRelacion | null
+}
+
+async function calcularSaldoPendienteFactura(
+  facturaId: string,
+  excluirDocumentoId?: string
+): Promise<number> {
+  const factura = await getDocumentoById(facturaId)
+  const { data: relacionesData, error: relacionesError } = await supabaseAfip
+    .from('documento_relaciones')
+    .select('destino_id')
+    .eq('origen_id', facturaId)
+    .in('tipo_relacion', ['anulacion', 'ajuste'])
+  if (relacionesError) throw relacionesError
+
+  const destinoIds = ((relacionesData ?? []) as Array<{ destino_id: string }>)
+    .map(relacion => relacion.destino_id)
+    .filter(id => id !== excluirDocumentoId)
+  if (destinoIds.length === 0) return roundMoney(Number(factura.total))
+
+  const { data: notasData, error: notasError } = await supabaseAfip
+    .from('documentos')
+    .select('id,tipo_documento,estado,total')
+    .in('id', destinoIds)
+  if (notasError) throw notasError
+
+  return roundMoney(
+    ((notasData ?? []) as Array<Pick<Documento, 'tipo_documento' | 'estado' | 'total'>>)
+      .filter(nota => ESTADOS_CONTABLES.has(nota.estado))
+      .reduce((saldo, nota) => {
+        if (nota.tipo_documento === 'nota_credito') return saldo - Number(nota.total)
+        if (nota.tipo_documento === 'nota_debito') return saldo + Number(nota.total)
+        return saldo
+      }, Number(factura.total))
+  )
+}
+
+function formatSaldo(value: number): string {
+  return roundMoney(Math.max(0, value)).toFixed(2)
 }
 
 function mueveStock(documento: Documento): boolean {

@@ -1,6 +1,6 @@
 import { ArrowLeft, FileText } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Skeleton } from '@/components/ui/Skeleton'
@@ -60,6 +60,10 @@ export function DocumentoEditor({ tipoOperacion }: DocumentoEditorProps) {
   }
 
   const documentoActual = (isNuevo ? null : documento) as Documento | null
+  if (documentoActual && documentoActual.estado !== 'borrador') {
+    return <Navigate replace to={`${basePath}/${documentoActual.id}/detalle`} />
+  }
+
   const titulo = getDocumentoTitulo(documentoActual, tipoOperacion)
 
   return (

@@ -10,6 +10,7 @@ import { Configuracion } from '@/pages/Configuracion'
 import { Ventas } from '@/pages/Ventas'
 import { Compras } from '@/pages/Compras'
 import { DocumentoEditor } from '@/pages/DocumentoEditor'
+import { DocumentoDetalle } from '@/pages/DocumentoDetalle'
 import { Catalogo } from '@/pages/Catalogo'
 import { Fiscal } from '@/pages/Fiscal'
 import { PedidosCompra } from '@/pages/PedidosCompra'
@@ -158,9 +159,11 @@ function AppShell() {
           <Route path="/cuentas" element={<Cuentas />} />
           <Route path="/ventas" element={<Ventas />} />
           <Route path="/ventas/nuevo" element={<DocumentoEditor tipoOperacion="venta" />} />
+          <Route path="/ventas/:id/detalle" element={<DocumentoDetalle tipoOperacion="venta" />} />
           <Route path="/ventas/:id" element={<DocumentoEditor tipoOperacion="venta" />} />
           <Route path="/compras" element={<Compras />} />
           <Route path="/compras/nuevo" element={<DocumentoEditor tipoOperacion="compra" />} />
+          <Route path="/compras/:id/detalle" element={<DocumentoDetalle tipoOperacion="compra" />} />
           <Route path="/compras/:id" element={<DocumentoEditor tipoOperacion="compra" />} />
           <Route path="/pedidos/compra" element={<PedidosCompra />} />
           <Route path="/pedidos/venta" element={<PedidosVenta />} />

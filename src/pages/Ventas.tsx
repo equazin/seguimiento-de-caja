@@ -3,9 +3,11 @@ import { Plus, Edit2, Trash2, Search, FileText, CheckCircle2, XCircle, Download,
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { Input, Select } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
 import { PageToolbar } from '@/components/ui/PageToolbar'
+import { Pagination } from '@/components/ui/Pagination'
 import { SkeletonTable } from '@/components/ui/Skeleton'
 import { ConfirmDialog } from '@/components/ui/Dialog'
 import { RowActionsMenu, type RowAction } from '@/components/ui/RowActionsMenu'
@@ -41,6 +43,8 @@ const ESTADOS_LABEL: Record<EstadoDocumento, string> = {
   remitido_parcial: 'Remitido parcial',
 }
 
+const POR_PAGINA = 25
+
 function badgeForEstado(estado: EstadoDocumento) {
   if (estado === 'borrador') return <Badge variant="borrador">{ESTADOS_LABEL[estado]}</Badge>
   if (estado === 'anulado') return <Badge variant="anulado">{ESTADOS_LABEL[estado]}</Badge>
@@ -54,6 +58,7 @@ export function Ventas() {
   const [tipoDocumento, setTipoDocumento] = useState<TipoDocumentoComercial | ''>('')
   const [estado, setEstado] = useState<EstadoDocumento | ''>('')
   const [busqueda, setBusqueda] = useState('')
+  const [pagina, setPagina] = useState(1)
   const [confirmDelete, setConfirmDelete] = useState<Documento | null>(null)
 
   const filtros = useMemo(
@@ -89,6 +94,9 @@ export function Ventas() {
 
   const loading = documentos === undefined
   const items = documentos ?? []
+  const totalPaginas = Math.ceil(items.length / POR_PAGINA)
+  const paginaActual = totalPaginas > 0 ? Math.min(pagina, totalPaginas) : 1
+  const paginated = items.slice((paginaActual - 1) * POR_PAGINA, paginaActual * POR_PAGINA)
   const resumen = {
     total: items.length,
     confirmados: items.filter(d => d.estado === 'confirmado').length,
@@ -102,7 +110,7 @@ export function Ventas() {
   }
 
   function abrirEditar(d: Documento) {
-    navigate(`/ventas/${d.id}`)
+    navigate(d.estado === 'borrador' ? `/ventas/${d.id}` : `/ventas/${d.id}/detalle`)
   }
 
   async function anular(d: Documento) {
@@ -190,6 +198,10 @@ export function Ventas() {
 
   return (
     <div className="space-y-5">
+      <PageHeader
+        titulo="Ventas"
+        subtitulo="Documentos comerciales emitidos"
+      />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <SummaryTile label="Documentos" value={resumen.total} />
         <SummaryTile label="Confirmados" value={resumen.confirmados} tone="info" />
@@ -212,14 +224,20 @@ export function Ventas() {
             label="Buscar"
             placeholder="N° interno u observaciones…"
             value={busqueda}
-            onChange={e => setBusqueda(e.target.value)}
+            onChange={e => {
+              setBusqueda(e.target.value)
+              setPagina(1)
+            }}
             className="pl-9"
           />
         </div>
         <Select
           label="Tipo"
           value={tipoDocumento}
-          onChange={e => setTipoDocumento(e.target.value as TipoDocumentoComercial | '')}
+          onChange={e => {
+            setTipoDocumento(e.target.value as TipoDocumentoComercial | '')
+            setPagina(1)
+          }}
         >
           <option value="">Todos</option>
           <option value="presupuesto">Presupuesto</option>
@@ -232,7 +250,10 @@ export function Ventas() {
         <Select
           label="Estado"
           value={estado}
-          onChange={e => setEstado(e.target.value as EstadoDocumento | '')}
+          onChange={e => {
+            setEstado(e.target.value as EstadoDocumento | '')
+            setPagina(1)
+          }}
         >
           <option value="">Todos</option>
           <option value="borrador">Borrador</option>
@@ -268,7 +289,7 @@ export function Ventas() {
                 </tr>
               </thead>
               <tbody>
-                {items.map(d => {
+                {paginated.map(d => {
                   const cliente = d.cliente_id ? clientesMap.get(d.cliente_id) : null
                   const arca = arcaMap.get(d.id)
                   const destinoConversion = siguienteTipoConvertible(d.tipo_documento)
@@ -329,6 +350,12 @@ export function Ventas() {
                 })}
               </tbody>
             </table>
+            <Pagination
+              page={paginaActual}
+              totalPages={totalPaginas}
+              totalItems={items.length}
+              onPageChange={setPagina}
+            />
           </div>
         )}
       </div>
