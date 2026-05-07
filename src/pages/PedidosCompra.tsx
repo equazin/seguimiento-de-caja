@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Plus, AlertTriangle, Clock, ChevronDown, ChevronRight, Trash2, Edit2, X } from 'lucide-react'
+import { Plus, AlertTriangle, Clock, ChevronDown, ChevronRight, Trash2, Edit2, X, Truck } from 'lucide-react'
 import {
   usePedidosCompra,
   crearPedidoCompra,
@@ -8,7 +8,6 @@ import {
   usePedidoCompraDetalle,
 } from '@/hooks/usePedidos'
 import { Button } from '@/components/ui/Button'
-import { Badge } from '@/components/ui/Badge'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Dialog, ConfirmDialog } from '@/components/ui/Dialog'
 import { SkeletonTable } from '@/components/ui/Skeleton'
@@ -20,12 +19,9 @@ import {
   calcularSaldoPendiente,
   estaVencido,
   venceProximamente,
-  formatearNumeroOC,
 } from '@/lib/vinculos'
 import { toast } from 'sonner'
 import type { EstadoPedidoCompra, PedidoCompra } from '@/db/schema'
-
-// ─── Tipos locales ────────────────────────────────────────────────────────────
 
 interface Filtros {
   estado: EstadoPedidoCompra | ''
@@ -56,7 +52,7 @@ const INITIAL_FORM: FormState = {
   notas: '',
 }
 
-// ─── Sub-componente: fila expandible ─────────────────────────────────────────
+// ─── Detalle expandible ───────────────────────────────────────────────────────
 
 function FilaDetalle({ id }: { id: string }) {
   const detalle = usePedidoCompraDetalle(id)
@@ -66,61 +62,49 @@ function FilaDetalle({ id }: { id: string }) {
   const { pedido, vinculos } = detalle
   const totalPagado = vinculos.reduce((s, v) => s + v.monto_aplicado, 0)
   const saldo = calcularSaldoPendiente(pedido, vinculos)
-
   return (
     <div className="px-6 pb-4 pt-2 space-y-3">
-      {pedido.descripcion && (
-        <p className="text-sm text-muted-foreground">{pedido.descripcion}</p>
-      )}
+      {pedido.descripcion && <p className="text-sm text-muted-foreground">{pedido.descripcion}</p>}
       <div className="flex gap-6 text-sm">
-        <div>
-          <p className="text-xs text-muted-foreground">Total</p>
-          <p className="font-semibold text-white">{formatMoney(pedido.monto_total)}</p>
-        </div>
-        <div>
-          <p className="text-xs text-muted-foreground">Pagado</p>
-          <p className="font-semibold text-success">{formatMoney(totalPagado)}</p>
-        </div>
-        <div>
-          <p className="text-xs text-muted-foreground">Saldo</p>
-          <p className={`font-semibold ${saldo > 0 ? 'text-warning' : 'text-success'}`}>{formatMoney(saldo)}</p>
-        </div>
+        <div><p className="text-xs text-muted-foreground">Total</p><p className="font-semibold text-white">{formatMoney(pedido.monto_total)}</p></div>
+        <div><p className="text-xs text-muted-foreground">Pagado</p><p className="font-semibold text-success">{formatMoney(totalPagado)}</p></div>
+        <div><p className="text-xs text-muted-foreground">Saldo</p><p className={`font-semibold ${saldo > 0 ? 'text-warning' : 'text-success'}`}>{formatMoney(saldo)}</p></div>
       </div>
-      {vinculos.length > 0 && (
-        <div className="rounded-lg border border-border overflow-hidden">
-          <table className="w-full text-xs">
-            <thead className="bg-surface-2 text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2 text-left font-medium">Movimiento</th>
-                <th className="px-3 py-2 text-right font-medium">Monto aplicado</th>
-                <th className="px-3 py-2 text-left font-medium">Notas</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {vinculos.map(v => (
-                <tr key={v.id} className="hover:bg-surface-2/50">
-                  <td className="px-3 py-2 text-muted-foreground font-mono">{v.movimiento_id.slice(0, 8)}…</td>
-                  <td className="px-3 py-2 text-right text-white">{formatMoney(v.monto_aplicado)}</td>
-                  <td className="px-3 py-2 text-muted-foreground">{v.notas ?? '—'}</td>
+      {vinculos.length === 0
+        ? <p className="text-xs text-muted-foreground italic">Sin pagos vinculados</p>
+        : (
+          <div className="rounded-lg border border-border overflow-hidden">
+            <table className="w-full text-xs">
+              <thead className="bg-surface-2 text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium">Movimiento</th>
+                  <th className="px-3 py-2 text-right font-medium">Monto aplicado</th>
+                  <th className="px-3 py-2 text-left font-medium">Notas</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {vinculos.length === 0 && (
-        <p className="text-xs text-muted-foreground italic">Sin pagos vinculados</p>
-      )}
+              </thead>
+              <tbody className="divide-y divide-border">
+                {vinculos.map(v => (
+                  <tr key={v.id} className="hover:bg-surface-2/50">
+                    <td className="px-3 py-2 text-muted-foreground font-mono">{v.movimiento_id.slice(0, 8)}…</td>
+                    <td className="px-3 py-2 text-right text-white">{formatMoney(v.monto_aplicado)}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{v.notas ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      }
     </div>
   )
 }
 
-// ─── Modal de creación/edición ────────────────────────────────────────────────
+// ─── Modal ────────────────────────────────────────────────────────────────────
 
 interface ModalProps {
   open: boolean
   onClose: () => void
-  pedido?: PedidoCompra | null
+  pedido: PedidoCompra | null
 }
 
 function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
@@ -130,6 +114,7 @@ function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
 
   useEffect(() => {
     if (!open) return
+    setErrors({})
     if (pedido) {
       setForm({
         numero: pedido.numero,
@@ -137,14 +122,13 @@ function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
         fecha: pedido.fecha,
         fecha_vencimiento: pedido.fecha_vencimiento ?? '',
         monto_total: String(pedido.monto_total),
-        monto_total_usd: pedido.monto_total_usd ? String(pedido.monto_total_usd) : '',
+        monto_total_usd: pedido.monto_total_usd != null ? String(pedido.monto_total_usd) : '',
         descripcion: pedido.descripcion ?? '',
         notas: pedido.notas ?? '',
       })
     } else {
-      setForm(INITIAL_FORM)
+      setForm({ ...INITIAL_FORM, fecha: new Date().toISOString().split('T')[0] })
     }
-    setErrors({})
   }, [open, pedido?.id])
 
   const set = (key: keyof FormState, value: string) => {
@@ -157,9 +141,8 @@ function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
     if (!form.numero.trim()) errs.numero = 'Requerido'
     if (!form.proveedor.trim()) errs.proveedor = 'Requerido'
     if (!form.fecha) errs.fecha = 'Requerido'
-    if (!form.monto_total || isNaN(Number(form.monto_total)) || Number(form.monto_total) <= 0) {
-      errs.monto_total = 'Monto inválido'
-    }
+    const monto = Number(form.monto_total)
+    if (!form.monto_total || isNaN(monto) || monto <= 0) errs.monto_total = 'Monto inválido'
     setErrors(errs)
     return Object.keys(errs).length === 0
   }
@@ -185,7 +168,7 @@ function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
         toast.success('Pedido actualizado')
       } else {
         await crearPedidoCompra(data)
-        toast.success('Pedido de compra creado')
+        toast.success('Pedido creado')
       }
       onClose()
     } catch {
@@ -199,73 +182,19 @@ function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
     <Dialog open={open} onClose={onClose} title={pedido ? 'Editar pedido de compra' : 'Nuevo pedido de compra'} size="lg">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
-          <Input
-            label="Número / referencia"
-            placeholder="OC-2025-0001"
-            value={form.numero}
-            onChange={e => set('numero', e.target.value)}
-            error={errors.numero}
-            required
-          />
-          <Input
-            label="Proveedor"
-            placeholder="Nombre del proveedor"
-            value={form.proveedor}
-            onChange={e => set('proveedor', e.target.value)}
-            error={errors.proveedor}
-            required
-          />
+          <Input label="Número / referencia" placeholder="OC-2025-0001" value={form.numero} onChange={e => set('numero', e.target.value)} error={errors.numero} required />
+          <Input label="Proveedor" placeholder="Nombre del proveedor" value={form.proveedor} onChange={e => set('proveedor', e.target.value)} error={errors.proveedor} required />
         </div>
         <div className="grid grid-cols-2 gap-4">
-          <Input
-            label="Fecha"
-            type="date"
-            value={form.fecha}
-            onChange={e => set('fecha', e.target.value)}
-            error={errors.fecha}
-            required
-          />
-          <Input
-            label="Vencimiento (opcional)"
-            type="date"
-            value={form.fecha_vencimiento}
-            onChange={e => set('fecha_vencimiento', e.target.value)}
-          />
+          <Input label="Fecha" type="date" value={form.fecha} onChange={e => set('fecha', e.target.value)} error={errors.fecha} required />
+          <Input label="Vencimiento (opcional)" type="date" value={form.fecha_vencimiento} onChange={e => set('fecha_vencimiento', e.target.value)} />
         </div>
         <div className="grid grid-cols-2 gap-4">
-          <Input
-            label="Monto total (ARS)"
-            type="number"
-            min="0"
-            step="0.01"
-            placeholder="0.00"
-            value={form.monto_total}
-            onChange={e => set('monto_total', e.target.value)}
-            error={errors.monto_total}
-            required
-          />
-          <Input
-            label="Monto USD (opcional)"
-            type="number"
-            min="0"
-            step="0.01"
-            placeholder="USD 0.00"
-            value={form.monto_total_usd}
-            onChange={e => set('monto_total_usd', e.target.value)}
-          />
+          <Input label="Monto total (ARS)" type="number" min="0" step="0.01" placeholder="0.00" value={form.monto_total} onChange={e => set('monto_total', e.target.value)} error={errors.monto_total} required />
+          <Input label="Monto USD (opcional)" type="number" min="0" step="0.01" placeholder="USD 0.00" value={form.monto_total_usd} onChange={e => set('monto_total_usd', e.target.value)} />
         </div>
-        <Input
-          label="Descripción (opcional)"
-          placeholder="Descripción del pedido"
-          value={form.descripcion}
-          onChange={e => set('descripcion', e.target.value)}
-        />
-        <Textarea
-          label="Notas internas (opcional)"
-          placeholder="Observaciones, condiciones, etc."
-          value={form.notas}
-          onChange={e => set('notas', e.target.value)}
-        />
+        <Input label="Descripción (opcional)" placeholder="Descripción del pedido" value={form.descripcion} onChange={e => set('descripcion', e.target.value)} />
+        <Textarea label="Notas internas (opcional)" placeholder="Observaciones, condiciones, etc." value={form.notas} onChange={e => set('notas', e.target.value)} />
         <div className="flex gap-3 justify-end pt-2">
           <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
           <Button type="submit" loading={loading}>{pedido ? 'Guardar cambios' : 'Crear pedido'}</Button>
@@ -275,7 +204,7 @@ function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
   )
 }
 
-// ─── Página principal ─────────────────────────────────────────────────────────
+// ─── Página ───────────────────────────────────────────────────────────────────
 
 export function PedidosCompra() {
   const [filtros, setFiltros] = useState<Filtros>({ estado: '', proveedor: '', fechaDesde: '', fechaHasta: '' })
@@ -284,14 +213,28 @@ export function PedidosCompra() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [expandido, setExpandido] = useState<string | null>(null)
 
-  const pedidos = usePedidosCompra({ ...filtros, estado: filtros.estado || undefined })
+  const pedidos = usePedidosCompra({
+    estado: filtros.estado || undefined,
+    proveedor: filtros.proveedor || undefined,
+    fechaDesde: filtros.fechaDesde || undefined,
+    fechaHasta: filtros.fechaHasta || undefined,
+  })
 
-  const toggleExpand = (id: string) => setExpandido(prev => prev === id ? null : id)
+  const setFiltro = <K extends keyof Filtros>(k: K, v: Filtros[K]) =>
+    setFiltros(f => ({ ...f, [k]: v }))
 
-  const handleEdit = (p: PedidoCompra) => {
-    setEditando(p)
-    setModalOpen(true)
-  }
+  const hayFiltros = !!(filtros.estado || filtros.proveedor || filtros.fechaDesde || filtros.fechaHasta)
+
+  const lista = pedidos ?? []
+
+  const vencidos = lista.filter(p =>
+    p.estado !== 'cancelado' && p.estado !== 'pagado_total' && estaVencido(p.fecha_vencimiento)
+  ).length
+
+  const proximos = lista.filter(p =>
+    p.estado !== 'cancelado' && p.estado !== 'pagado_total' &&
+    !estaVencido(p.fecha_vencimiento) && venceProximamente(p.fecha_vencimiento)
+  ).length
 
   const handleDelete = async (id: string) => {
     try {
@@ -313,25 +256,8 @@ export function PedidosCompra() {
     }
   }
 
-  const setFiltro = <K extends keyof Filtros>(k: K, v: Filtros[K]) =>
-    setFiltros(f => ({ ...f, [k]: v }))
-
-  const limpiarFiltros = () => setFiltros({ estado: '', proveedor: '', fechaDesde: '', fechaHasta: '' })
-
-  const hayFiltros = filtros.estado || filtros.proveedor || filtros.fechaDesde || filtros.fechaHasta
-
-  const vencidos = (pedidos ?? []).filter(p =>
-    p.estado !== 'cancelado' && p.estado !== 'pagado_total' && estaVencido(p.fecha_vencimiento)
-  ).length
-
-  const proximosAVencer = (pedidos ?? []).filter(p =>
-    p.estado !== 'cancelado' && p.estado !== 'pagado_total' &&
-    !estaVencido(p.fecha_vencimiento) && venceProximamente(p.fecha_vencimiento)
-  ).length
-
   return (
     <div className="space-y-5">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-white">Pedidos de compra</h1>
@@ -342,8 +268,7 @@ export function PedidosCompra() {
         </Button>
       </div>
 
-      {/* Alertas de vencimiento */}
-      {(vencidos > 0 || proximosAVencer > 0) && (
+      {(vencidos > 0 || proximos > 0) && (
         <div className="flex gap-3 flex-wrap">
           {vencidos > 0 && (
             <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
@@ -351,22 +276,21 @@ export function PedidosCompra() {
               {vencidos} pedido{vencidos > 1 ? 's' : ''} vencido{vencidos > 1 ? 's' : ''}
             </div>
           )}
-          {proximosAVencer > 0 && (
+          {proximos > 0 && (
             <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
               <Clock size={14} />
-              {proximosAVencer} vence{proximosAVencer > 1 ? 'n' : ''} esta semana
+              {proximos} vence{proximos > 1 ? 'n' : ''} esta semana
             </div>
           )}
         </div>
       )}
 
-      {/* Filtros */}
       <div className="rounded-xl border border-border bg-surface/90 p-4">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Select label="Estado" value={filtros.estado} onChange={e => setFiltro('estado', e.target.value as EstadoPedidoCompra | '')}>
             <option value="">Todos</option>
-            {(Object.entries(ESTADO_COMPRA_CONFIG) as [EstadoPedidoCompra, { label: string }][]).map(([k, v]) => (
-              <option key={k} value={k}>{v.label}</option>
+            {(Object.keys(ESTADO_COMPRA_CONFIG) as EstadoPedidoCompra[]).map(k => (
+              <option key={k} value={k}>{ESTADO_COMPRA_CONFIG[k].label}</option>
             ))}
           </Select>
           <Input label="Proveedor / número" placeholder="Buscar..." value={filtros.proveedor} onChange={e => setFiltro('proveedor', e.target.value)} />
@@ -374,21 +298,20 @@ export function PedidosCompra() {
           <Input label="Hasta" type="date" value={filtros.fechaHasta} onChange={e => setFiltro('fechaHasta', e.target.value)} />
         </div>
         {hayFiltros && (
-          <button onClick={limpiarFiltros} className="mt-2 flex items-center gap-1 text-xs text-muted-foreground hover:text-white transition-colors">
+          <button onClick={() => setFiltros({ estado: '', proveedor: '', fechaDesde: '', fechaHasta: '' })} className="mt-2 flex items-center gap-1 text-xs text-muted-foreground hover:text-white transition-colors">
             <X size={12} /> Limpiar filtros
           </button>
         )}
       </div>
 
-      {/* Tabla */}
       <div className="rounded-xl border border-border bg-surface/90 overflow-hidden shadow-xl shadow-black/10">
         {pedidos === undefined ? (
-          <SkeletonTable rows={5} cols={5} />
+          <SkeletonTable rows={5} />
         ) : pedidos.length === 0 ? (
           <EmptyState
             icon={Truck}
             titulo="Sin pedidos de compra"
-            descripcion={hayFiltros ? 'Ningún pedido coincide con los filtros aplicados.' : 'Creá tu primer pedido de compra.'}
+            descripcion={hayFiltros ? 'Ningún pedido coincide con los filtros.' : 'Creá tu primer pedido de compra.'}
           />
         ) : (
           <table className="w-full">
@@ -410,22 +333,15 @@ export function PedidosCompra() {
                 const vencido = estaVencido(p.fecha_vencimiento) && p.estado !== 'cancelado' && p.estado !== 'pagado_total'
                 const proxVencer = !vencido && venceProximamente(p.fecha_vencimiento) && p.estado !== 'cancelado' && p.estado !== 'pagado_total'
                 const isExpanded = expandido === p.id
-
                 return (
                   <React.Fragment key={p.id}>
                     <tr className="hover:bg-surface-2/30 transition-colors">
                       <td className="pl-3">
-                        <button
-                          type="button"
-                          onClick={() => toggleExpand(p.id)}
-                          className="text-muted-foreground hover:text-white transition-colors"
-                        >
+                        <button type="button" onClick={() => setExpandido(prev => prev === p.id ? null : p.id)} className="text-muted-foreground hover:text-white transition-colors">
                           {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                         </button>
                       </td>
-                      <td className="px-4 py-3">
-                        <span className="font-mono text-sm text-white">{p.numero}</span>
-                      </td>
+                      <td className="px-4 py-3"><span className="font-mono text-sm text-white">{p.numero}</span></td>
                       <td className="px-4 py-3 text-sm text-white">{p.proveedor}</td>
                       <td className="px-4 py-3 text-sm text-muted-foreground">{formatDate(p.fecha)}</td>
                       <td className="px-4 py-3">
@@ -448,7 +364,7 @@ export function PedidosCompra() {
                       <td className="pr-3">
                         <RowActionsMenu
                           actions={[
-                            { id: 'editar', label: 'Editar', icon: Edit2, onClick: () => handleEdit(p) },
+                            { id: 'editar', label: 'Editar', icon: Edit2, onClick: () => { setEditando(p); setModalOpen(true) } },
                             ...(p.estado !== 'cancelado' ? [{ id: 'cancelar', label: 'Cancelar', icon: X, onClick: () => handleCancelar(p) }] : []),
                             { id: 'eliminar', label: 'Eliminar', icon: Trash2, onClick: () => setConfirmDelete(p.id), tone: 'danger' as const },
                           ]}
@@ -457,9 +373,7 @@ export function PedidosCompra() {
                     </tr>
                     {isExpanded && (
                       <tr className="bg-surface-2/20">
-                        <td colSpan={8}>
-                          <FilaDetalle id={p.id} />
-                        </td>
+                        <td colSpan={8}><FilaDetalle id={p.id} /></td>
                       </tr>
                     )}
                   </React.Fragment>
@@ -482,7 +396,7 @@ export function PedidosCompra() {
         message="Esta acción eliminará el pedido y todos sus vínculos. No se puede deshacer."
         confirmLabel="Eliminar"
         danger
-        onConfirm={() => confirmDelete && handleDelete(confirmDelete)}
+        onConfirm={() => { if (confirmDelete) handleDelete(confirmDelete) }}
         onClose={() => setConfirmDelete(null)}
       />
     </div>
