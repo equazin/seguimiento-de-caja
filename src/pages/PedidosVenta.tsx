@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Plus, AlertTriangle, Clock, ChevronDown, ChevronRight, Trash2, Edit2, X, ShoppingCart } from 'lucide-react'
 import {
   usePedidosVenta,
@@ -404,14 +404,14 @@ export function PedidosVenta() {
             </thead>
             <tbody className="divide-y divide-border">
               {pedidos.map(p => {
-                const cfg = ESTADO_VENTA_CONFIG[p.estado]
+                const cfg = ESTADO_VENTA_CONFIG[p.estado] ?? { label: p.estado, color: '#6b7280' }
                 const vencido = estaVencido(p.fecha_vencimiento) && p.estado !== 'cancelado' && p.estado !== 'cobrado_total'
                 const proxVencer = !vencido && venceProximamente(p.fecha_vencimiento) && p.estado !== 'cancelado' && p.estado !== 'cobrado_total'
                 const isExpanded = expandido === p.id
 
                 return (
-                  <>
-                    <tr key={p.id} className="hover:bg-surface-2/30 transition-colors">
+                  <React.Fragment key={p.id}>
+                    <tr className="hover:bg-surface-2/30 transition-colors">
                       <td className="pl-3">
                         <button
                           type="button"
@@ -454,13 +454,13 @@ export function PedidosVenta() {
                       </td>
                     </tr>
                     {isExpanded && (
-                      <tr key={`${p.id}-detail`} className="bg-surface-2/20">
+                      <tr className="bg-surface-2/20">
                         <td colSpan={8}>
                           <FilaDetalle id={p.id} />
                         </td>
                       </tr>
                     )}
-                  </>
+                  </React.Fragment>
                 )
               })}
             </tbody>
