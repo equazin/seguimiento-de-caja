@@ -477,10 +477,11 @@ export function PedidosVenta() {
       <ConfirmDialog
         open={!!confirmDelete}
         title="Eliminar pedido"
-        description="Esta acción eliminará el pedido y todos sus vínculos. No se puede deshacer."
+        message="Esta acción eliminará el pedido y todos sus vínculos. No se puede deshacer."
         confirmLabel="Eliminar"
+        danger
         onConfirm={() => confirmDelete && handleDelete(confirmDelete)}
-        onCancel={() => setConfirmDelete(null)}
+        onClose={() => setConfirmDelete(null)}
       />
     </div>
   )
