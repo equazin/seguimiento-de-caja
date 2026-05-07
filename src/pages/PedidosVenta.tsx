@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useMemo, useState, useEffect } from 'react'
 import { Plus, AlertTriangle, Clock, ChevronDown, ChevronRight, Trash2, Edit2, X, ShoppingCart } from 'lucide-react'
 import {
   usePedidosVenta,
@@ -7,6 +7,8 @@ import {
   eliminarPedidoVenta,
   usePedidoVentaDetalle,
 } from '@/hooks/usePedidos'
+import { useClientes } from '@/hooks/useCatalogo'
+import { useCotizacionUSD } from '@/hooks/useCotizacionUSD'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Dialog, ConfirmDialog } from '@/components/ui/Dialog'
@@ -34,22 +36,24 @@ interface Filtros {
 
 interface FormState {
   numero: string
-  cliente: string
+  cliente_id: string
+  cliente: string  // texto fallback
   fecha: string
   fecha_vencimiento: string
-  monto_total: string
   monto_total_usd: string
+  tipo_cambio: string
   descripcion: string
   notas: string
 }
 
 const INITIAL_FORM: FormState = {
   numero: '',
+  cliente_id: '',
   cliente: '',
   fecha: new Date().toISOString().split('T')[0],
   fecha_vencimiento: '',
-  monto_total: '',
   monto_total_usd: '',
+  tipo_cambio: '',
   descripcion: '',
   notas: '',
 }
@@ -122,42 +126,74 @@ interface ModalProps {
 }
 
 function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
+  const clientesData = useClientes({ soloActivos: true })
+  const clientes = useMemo(() => clientesData ?? [], [clientesData])
+  const cotizacion = useCotizacionUSD()
+  const cotizacionGlobal = cotizacion?.cotizacion ?? 0
+
   const [form, setForm] = useState<FormState>(INITIAL_FORM)
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({})
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     if (!open) return
+    setErrors({})
     if (pedido) {
+      const tcPedido = pedido.tipo_cambio
       setForm({
         numero: pedido.numero,
-        cliente: pedido.cliente,
+        cliente_id: pedido.cliente_id ?? '',
+        cliente: pedido.cliente ?? '',
         fecha: pedido.fecha,
         fecha_vencimiento: pedido.fecha_vencimiento ?? '',
-        monto_total: String(pedido.monto_total),
-        monto_total_usd: pedido.monto_total_usd ? String(pedido.monto_total_usd) : '',
+        monto_total_usd:
+          pedido.monto_total_usd != null
+            ? String(pedido.monto_total_usd)
+            : tcPedido && tcPedido > 0
+              ? (Number(pedido.monto_total) / Number(tcPedido)).toFixed(2)
+              : '',
+        tipo_cambio: tcPedido != null ? String(tcPedido) : String(cotizacionGlobal || ''),
         descripcion: pedido.descripcion ?? '',
         notas: pedido.notas ?? '',
       })
     } else {
-      setForm(INITIAL_FORM)
+      setForm({
+        ...INITIAL_FORM,
+        fecha: new Date().toISOString().split('T')[0],
+        tipo_cambio: cotizacionGlobal > 0 ? String(cotizacionGlobal) : '',
+      })
     }
-    setErrors({})
-  }, [open, pedido?.id])
+  }, [open, pedido?.id, cotizacionGlobal])
 
-  const set = (key: keyof FormState, value: string) => {
+  const set = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm(f => ({ ...f, [key]: value }))
     setErrors(e => ({ ...e, [key]: undefined }))
   }
 
+  function pickCliente(id: string) {
+    const cliente = clientes.find(c => c.id === id)
+    setForm(f => ({
+      ...f,
+      cliente_id: id,
+      cliente: cliente ? cliente.razon_social : f.cliente,
+    }))
+    setErrors(e => ({ ...e, cliente_id: undefined }))
+  }
+
+  const usdNum = Number(form.monto_total_usd.replace(',', '.'))
+  const tcNum = Number(form.tipo_cambio.replace(',', '.'))
+  const arsCalculado =
+    Number.isFinite(usdNum) && usdNum > 0 && Number.isFinite(tcNum) && tcNum > 0
+      ? usdNum * tcNum
+      : 0
+
   const validate = (): boolean => {
     const errs: Partial<Record<keyof FormState, string>> = {}
     if (!form.numero.trim()) errs.numero = 'Requerido'
-    if (!form.cliente.trim()) errs.cliente = 'Requerido'
+    if (!form.cliente_id && !form.cliente.trim()) errs.cliente_id = 'Seleccioná un cliente'
     if (!form.fecha) errs.fecha = 'Requerido'
-    if (!form.monto_total || isNaN(Number(form.monto_total)) || Number(form.monto_total) <= 0) {
-      errs.monto_total = 'Monto inválido'
-    }
+    if (!Number.isFinite(usdNum) || usdNum <= 0) errs.monto_total_usd = 'Monto USD inválido'
+    if (!Number.isFinite(tcNum) || tcNum <= 0) errs.tipo_cambio = 'Tipo de cambio inválido'
     setErrors(errs)
     return Object.keys(errs).length === 0
   }
@@ -170,11 +206,13 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
       const data = {
         numero: form.numero.trim(),
         cliente: form.cliente.trim(),
+        cliente_id: form.cliente_id || null,
         fecha: form.fecha,
         fecha_vencimiento: form.fecha_vencimiento || null,
         estado: (pedido?.estado ?? 'pendiente') as EstadoPedidoVenta,
-        monto_total: Number(form.monto_total),
-        monto_total_usd: form.monto_total_usd ? Number(form.monto_total_usd) : null,
+        monto_total: arsCalculado,
+        monto_total_usd: usdNum,
+        tipo_cambio: tcNum,
         descripcion: form.descripcion.trim() || null,
         notas: form.notas.trim() || null,
       }
@@ -205,14 +243,18 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
             error={errors.numero}
             required
           />
-          <Input
+          <Select
             label="Cliente"
-            placeholder="Nombre del cliente"
-            value={form.cliente}
-            onChange={e => set('cliente', e.target.value)}
-            error={errors.cliente}
+            value={form.cliente_id}
+            onChange={e => pickCliente(e.target.value)}
+            error={errors.cliente_id}
             required
-          />
+          >
+            <option value="">— Seleccioná un cliente —</option>
+            {clientes.map(c => (
+              <option key={c.id} value={c.id}>{c.razon_social}</option>
+            ))}
+          </Select>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <Input
@@ -232,24 +274,31 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
         </div>
         <div className="grid grid-cols-2 gap-4">
           <Input
-            label="Monto total (ARS)"
-            type="number"
-            min="0"
-            step="0.01"
-            placeholder="0.00"
-            value={form.monto_total}
-            onChange={e => set('monto_total', e.target.value)}
-            error={errors.monto_total}
-            required
-          />
-          <Input
-            label="Monto USD (opcional)"
+            label="Monto USD"
             type="number"
             min="0"
             step="0.01"
             placeholder="USD 0.00"
             value={form.monto_total_usd}
             onChange={e => set('monto_total_usd', e.target.value)}
+            error={errors.monto_total_usd}
+            hint={arsCalculado > 0 ? `≈ ${formatMoney(arsCalculado)}` : undefined}
+            required
+          />
+          <Input
+            label="Tipo de cambio"
+            type="number"
+            min="0"
+            step="0.01"
+            value={form.tipo_cambio}
+            onChange={e => set('tipo_cambio', e.target.value)}
+            error={errors.tipo_cambio}
+            hint={
+              cotizacionGlobal > 0 && tcNum && Math.abs(cotizacionGlobal - tcNum) > 0.001
+                ? `Global: ${cotizacionGlobal}`
+                : 'Cotización global'
+            }
+            required
           />
         </div>
         <Input
@@ -381,7 +430,7 @@ export function PedidosVenta() {
       {/* Tabla */}
       <div className="rounded-xl border border-border bg-surface/90 overflow-hidden shadow-xl shadow-black/10">
         {pedidos === undefined ? (
-          <SkeletonTable rows={5} cols={5} />
+          <SkeletonTable rows={5} />
         ) : pedidos.length === 0 ? (
           <EmptyState
             icon={ShoppingCart}
@@ -397,7 +446,8 @@ export function PedidosVenta() {
                 <th className="px-4 py-3 text-left font-medium">Cliente</th>
                 <th className="px-4 py-3 text-left font-medium">Fecha</th>
                 <th className="px-4 py-3 text-left font-medium">Vencimiento</th>
-                <th className="px-4 py-3 text-right font-medium">Total</th>
+                <th className="px-4 py-3 text-right font-medium">Total USD</th>
+                <th className="px-4 py-3 text-right font-medium">Total ARS</th>
                 <th className="px-4 py-3 text-left font-medium">Estado</th>
                 <th className="w-10" />
               </tr>
@@ -437,7 +487,12 @@ export function PedidosVenta() {
                           <span className="text-sm text-muted-foreground/40">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right text-sm font-semibold text-white">{formatMoney(p.monto_total)}</td>
+                      <td className="px-4 py-3 text-right text-sm font-semibold text-white tabular-nums">
+                        {p.monto_total_usd != null ? formatMoney(p.monto_total_usd, 'USD') : <span className="text-muted-foreground">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-right text-sm text-muted-foreground tabular-nums">
+                        {formatMoney(p.monto_total)}
+                      </td>
                       <td className="px-4 py-3">
                         <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: cfg.color + '20', color: cfg.color }}>
                           {cfg.label}
@@ -455,7 +510,7 @@ export function PedidosVenta() {
                     </tr>
                     {isExpanded && (
                       <tr className="bg-surface-2/20">
-                        <td colSpan={8}>
+                        <td colSpan={9}>
                           <FilaDetalle id={p.id} />
                         </td>
                       </tr>

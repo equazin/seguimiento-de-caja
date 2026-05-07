@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useMemo, useState, useEffect } from 'react'
 import { Plus, AlertTriangle, Clock, ChevronDown, ChevronRight, Trash2, Edit2, X, Truck } from 'lucide-react'
 import {
   usePedidosCompra,
@@ -7,6 +7,8 @@ import {
   eliminarPedidoCompra,
   usePedidoCompraDetalle,
 } from '@/hooks/usePedidos'
+import { useProveedores } from '@/hooks/useCatalogo'
+import { useCotizacionUSD } from '@/hooks/useCotizacionUSD'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Dialog, ConfirmDialog } from '@/components/ui/Dialog'
@@ -32,22 +34,24 @@ interface Filtros {
 
 interface FormState {
   numero: string
-  proveedor: string
+  proveedor_id: string
+  proveedor: string  // texto libre como fallback si no hay seleccion
   fecha: string
   fecha_vencimiento: string
-  monto_total: string
   monto_total_usd: string
+  tipo_cambio: string
   descripcion: string
   notas: string
 }
 
 const INITIAL_FORM: FormState = {
   numero: '',
+  proveedor_id: '',
   proveedor: '',
   fecha: new Date().toISOString().split('T')[0],
   fecha_vencimiento: '',
-  monto_total: '',
   monto_total_usd: '',
+  tipo_cambio: '',
   descripcion: '',
   notas: '',
 }
@@ -108,6 +112,11 @@ interface ModalProps {
 }
 
 function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
+  const proveedoresData = useProveedores({ soloActivos: true })
+  const proveedores = useMemo(() => proveedoresData ?? [], [proveedoresData])
+  const cotizacion = useCotizacionUSD()
+  const cotizacionGlobal = cotizacion?.cotizacion ?? 0
+
   const [form, setForm] = useState<FormState>(INITIAL_FORM)
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({})
   const [loading, setLoading] = useState(false)
@@ -116,33 +125,62 @@ function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
     if (!open) return
     setErrors({})
     if (pedido) {
+      const proveedorId = pedido.proveedor_id ?? ''
+      const tcPedido = pedido.tipo_cambio
       setForm({
         numero: pedido.numero,
-        proveedor: pedido.proveedor,
+        proveedor_id: proveedorId,
+        proveedor: pedido.proveedor ?? '',
         fecha: pedido.fecha,
         fecha_vencimiento: pedido.fecha_vencimiento ?? '',
-        monto_total: String(pedido.monto_total),
-        monto_total_usd: pedido.monto_total_usd != null ? String(pedido.monto_total_usd) : '',
+        monto_total_usd:
+          pedido.monto_total_usd != null
+            ? String(pedido.monto_total_usd)
+            : tcPedido && tcPedido > 0
+              ? (Number(pedido.monto_total) / Number(tcPedido)).toFixed(2)
+              : '',
+        tipo_cambio: tcPedido != null ? String(tcPedido) : String(cotizacionGlobal || ''),
         descripcion: pedido.descripcion ?? '',
         notas: pedido.notas ?? '',
       })
     } else {
-      setForm({ ...INITIAL_FORM, fecha: new Date().toISOString().split('T')[0] })
+      setForm({
+        ...INITIAL_FORM,
+        fecha: new Date().toISOString().split('T')[0],
+        tipo_cambio: cotizacionGlobal > 0 ? String(cotizacionGlobal) : '',
+      })
     }
-  }, [open, pedido?.id])
+  }, [open, pedido?.id, cotizacionGlobal])
 
-  const set = (key: keyof FormState, value: string) => {
+  const set = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm(f => ({ ...f, [key]: value }))
     setErrors(e => ({ ...e, [key]: undefined }))
   }
 
+  function pickProveedor(id: string) {
+    const proveedor = proveedores.find(p => p.id === id)
+    setForm(f => ({
+      ...f,
+      proveedor_id: id,
+      proveedor: proveedor ? proveedor.razon_social : f.proveedor,
+    }))
+    setErrors(e => ({ ...e, proveedor: undefined, proveedor_id: undefined }))
+  }
+
+  const usdNum = Number(form.monto_total_usd.replace(',', '.'))
+  const tcNum = Number(form.tipo_cambio.replace(',', '.'))
+  const arsCalculado =
+    Number.isFinite(usdNum) && usdNum > 0 && Number.isFinite(tcNum) && tcNum > 0
+      ? usdNum * tcNum
+      : 0
+
   const validate = (): boolean => {
     const errs: Partial<Record<keyof FormState, string>> = {}
     if (!form.numero.trim()) errs.numero = 'Requerido'
-    if (!form.proveedor.trim()) errs.proveedor = 'Requerido'
+    if (!form.proveedor_id && !form.proveedor.trim()) errs.proveedor_id = 'Seleccioná un proveedor'
     if (!form.fecha) errs.fecha = 'Requerido'
-    const monto = Number(form.monto_total)
-    if (!form.monto_total || isNaN(monto) || monto <= 0) errs.monto_total = 'Monto inválido'
+    if (!Number.isFinite(usdNum) || usdNum <= 0) errs.monto_total_usd = 'Monto USD inválido'
+    if (!Number.isFinite(tcNum) || tcNum <= 0) errs.tipo_cambio = 'Tipo de cambio inválido'
     setErrors(errs)
     return Object.keys(errs).length === 0
   }
@@ -155,11 +193,13 @@ function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
       const data = {
         numero: form.numero.trim(),
         proveedor: form.proveedor.trim(),
+        proveedor_id: form.proveedor_id || null,
         fecha: form.fecha,
         fecha_vencimiento: form.fecha_vencimiento || null,
         estado: (pedido?.estado ?? 'pendiente') as EstadoPedidoCompra,
-        monto_total: Number(form.monto_total),
-        monto_total_usd: form.monto_total_usd ? Number(form.monto_total_usd) : null,
+        monto_total: arsCalculado,
+        monto_total_usd: usdNum,
+        tipo_cambio: tcNum,
         descripcion: form.descripcion.trim() || null,
         notas: form.notas.trim() || null,
       }
@@ -183,15 +223,51 @@ function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <Input label="Número / referencia" placeholder="OC-2025-0001" value={form.numero} onChange={e => set('numero', e.target.value)} error={errors.numero} required />
-          <Input label="Proveedor" placeholder="Nombre del proveedor" value={form.proveedor} onChange={e => set('proveedor', e.target.value)} error={errors.proveedor} required />
+          <Select
+            label="Proveedor"
+            value={form.proveedor_id}
+            onChange={e => pickProveedor(e.target.value)}
+            error={errors.proveedor_id}
+            required
+          >
+            <option value="">— Seleccioná un proveedor —</option>
+            {proveedores.map(p => (
+              <option key={p.id} value={p.id}>{p.razon_social}</option>
+            ))}
+          </Select>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <Input label="Fecha" type="date" value={form.fecha} onChange={e => set('fecha', e.target.value)} error={errors.fecha} required />
           <Input label="Vencimiento (opcional)" type="date" value={form.fecha_vencimiento} onChange={e => set('fecha_vencimiento', e.target.value)} />
         </div>
         <div className="grid grid-cols-2 gap-4">
-          <Input label="Monto total (ARS)" type="number" min="0" step="0.01" placeholder="0.00" value={form.monto_total} onChange={e => set('monto_total', e.target.value)} error={errors.monto_total} required />
-          <Input label="Monto USD (opcional)" type="number" min="0" step="0.01" placeholder="USD 0.00" value={form.monto_total_usd} onChange={e => set('monto_total_usd', e.target.value)} />
+          <Input
+            label="Monto USD"
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="USD 0.00"
+            value={form.monto_total_usd}
+            onChange={e => set('monto_total_usd', e.target.value)}
+            error={errors.monto_total_usd}
+            hint={arsCalculado > 0 ? `≈ ${formatMoney(arsCalculado)}` : undefined}
+            required
+          />
+          <Input
+            label="Tipo de cambio"
+            type="number"
+            min="0"
+            step="0.01"
+            value={form.tipo_cambio}
+            onChange={e => set('tipo_cambio', e.target.value)}
+            error={errors.tipo_cambio}
+            hint={
+              cotizacionGlobal > 0 && tcNum && Math.abs(cotizacionGlobal - tcNum) > 0.001
+                ? `Global: ${cotizacionGlobal}`
+                : 'Cotización global'
+            }
+            required
+          />
         </div>
         <Input label="Descripción (opcional)" placeholder="Descripción del pedido" value={form.descripcion} onChange={e => set('descripcion', e.target.value)} />
         <Textarea label="Notas internas (opcional)" placeholder="Observaciones, condiciones, etc." value={form.notas} onChange={e => set('notas', e.target.value)} />
@@ -322,7 +398,8 @@ export function PedidosCompra() {
                 <th className="px-4 py-3 text-left font-medium">Proveedor</th>
                 <th className="px-4 py-3 text-left font-medium">Fecha</th>
                 <th className="px-4 py-3 text-left font-medium">Vencimiento</th>
-                <th className="px-4 py-3 text-right font-medium">Total</th>
+                <th className="px-4 py-3 text-right font-medium">Total USD</th>
+                <th className="px-4 py-3 text-right font-medium">Total ARS</th>
                 <th className="px-4 py-3 text-left font-medium">Estado</th>
                 <th className="w-10" />
               </tr>
@@ -355,7 +432,12 @@ export function PedidosCompra() {
                           <span className="text-sm text-muted-foreground/40">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right text-sm font-semibold text-white">{formatMoney(p.monto_total)}</td>
+                      <td className="px-4 py-3 text-right text-sm font-semibold text-white tabular-nums">
+                        {p.monto_total_usd != null ? formatMoney(p.monto_total_usd, 'USD') : <span className="text-muted-foreground">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-right text-sm text-muted-foreground tabular-nums">
+                        {formatMoney(p.monto_total)}
+                      </td>
                       <td className="px-4 py-3">
                         <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: cfg.color + '20', color: cfg.color }}>
                           {cfg.label}
@@ -373,7 +455,7 @@ export function PedidosCompra() {
                     </tr>
                     {isExpanded && (
                       <tr className="bg-surface-2/20">
-                        <td colSpan={8}><FilaDetalle id={p.id} /></td>
+                        <td colSpan={9}><FilaDetalle id={p.id} /></td>
                       </tr>
                     )}
                   </React.Fragment>

@@ -67,11 +67,13 @@ export type PedidoCompra = {
   id: string
   numero: string
   proveedor: string
+  proveedor_id?: string | null
   fecha: string
   fecha_vencimiento?: string | null
   estado: EstadoPedidoCompra
   monto_total: number
   monto_total_usd?: number | null
+  tipo_cambio?: number | null
   descripcion?: string | null
   items?: PedidoItem[] | null
   notas?: string | null
@@ -82,11 +84,13 @@ export type PedidoVenta = {
   id: string
   numero: string
   cliente: string
+  cliente_id?: string | null
   fecha: string
   fecha_vencimiento?: string | null
   estado: EstadoPedidoVenta
   monto_total: number
   monto_total_usd?: number | null
+  tipo_cambio?: number | null
   descripcion?: string | null
   items?: PedidoItem[] | null
   notas?: string | null

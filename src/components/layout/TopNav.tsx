@@ -20,6 +20,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { ActionMenu, type GlobalAction } from '@/components/ui/ActionMenu'
+import { CotizacionUsdInput } from './CotizacionUsdInput'
 import { useAuth } from '@/lib/auth'
 import { useTheme } from '@/lib/theme'
 import { cn } from '@/lib/formatters'
@@ -124,6 +125,7 @@ export function TopNav({ onGlobalAction }: TopNavProps) {
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
+            <CotizacionUsdInput />
             <ActionMenu onAction={onGlobalAction} />
             <button
               type="button"
