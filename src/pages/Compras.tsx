@@ -3,6 +3,7 @@ import { Plus, Edit2, Trash2, Search, FileText, CheckCircle2, XCircle, Download,
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { Input, Select } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
 import { PageToolbar } from '@/components/ui/PageToolbar'
@@ -200,6 +201,10 @@ export function Compras() {
 
   return (
     <div className="space-y-5">
+      <PageHeader
+        titulo="Compras"
+        subtitulo="Documentos recibidos de proveedores"
+      />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <SummaryTile label="Documentos" value={resumen.total} />
         <SummaryTile label="Borradores" value={resumen.borradores} />

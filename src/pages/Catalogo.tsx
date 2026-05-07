@@ -3,6 +3,7 @@ import { Users, Truck, Package, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/formatters'
 import { ContactosTab } from '@/components/catalogo/ContactosTab'
 import { ProductosTab } from '@/components/catalogo/ProductosTab'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { useAuth } from '@/lib/auth'
 import { useClientes, useProveedores, useProductos } from '@/hooks/useCatalogo'
 
@@ -37,6 +38,10 @@ export function Catalogo() {
 
   return (
     <div className="space-y-5">
+      <PageHeader
+        titulo="Catálogo"
+        subtitulo="Clientes, proveedores y productos"
+      />
       <div className="rounded-xl border border-border bg-surface/90 p-2 shadow-xl shadow-black/10">
         <div className="flex flex-wrap gap-1">
         {TABS.map(({ id, label, icon: Icon }) => {

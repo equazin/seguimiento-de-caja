@@ -8,6 +8,7 @@ import { useSupabaseQuery } from '@/hooks/useSupabaseQuery'
 import { supabaseAfip } from '@/db/schema'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { Badge } from '@/components/ui/Badge'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { exportToExcel, exportToPDF } from '@/lib/exporters'
@@ -120,6 +121,10 @@ export function Reportes() {
 
   return (
     <div className="space-y-6">
+      <PageHeader
+        titulo="Reportes"
+        subtitulo="Análisis y exportación"
+      />
       {/* Filtros */}
       <Card>
         <div className="flex flex-wrap items-end gap-4">

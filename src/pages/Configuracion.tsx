@@ -5,6 +5,7 @@ import { getConfiguracion, setConfiguracion, exportarDB, importarDB, resetearDB 
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Input, Select } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { Dialog, ConfirmDialog } from '@/components/ui/Dialog'
 import { Badge } from '@/components/ui/Badge'
 import { COLORES_DISPONIBLES, ICONOS_DISPONIBLES } from '@/lib/constants'
@@ -133,6 +134,10 @@ export function Configuracion() {
 
   return (
     <div className="space-y-6 max-w-3xl">
+      <PageHeader
+        titulo="Configuración"
+        subtitulo="Ajustes del sistema"
+      />
       {/* Config general */}
       <Card>
         <CardHeader>

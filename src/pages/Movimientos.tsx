@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button'
 import { SkeletonTable } from '@/components/ui/Skeleton'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { RowActionsMenu } from '@/components/ui/RowActionsMenu'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { formatMoney, formatDate } from '@/lib/formatters'
 import { METODOS_PAGO } from '@/lib/constants'
 import type { Movimiento } from '@/db/schema'
@@ -103,6 +104,13 @@ export function Movimientos({ onModalOpen, onEdit }: Props) {
 
   return (
     <>
+      <PageHeader
+        titulo="Movimientos"
+        subtitulo="Gestión de ingresos y egresos"
+        acciones={
+          <Button size="sm" onClick={onModalOpen}>+ Nuevo movimiento</Button>
+        }
+      />
       <div className="space-y-4">
         <MovimientoFilters
           filtros={filtros}
@@ -113,21 +121,18 @@ export function Movimientos({ onModalOpen, onEdit }: Props) {
 
         {/* Toolbar */}
         <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface/90 p-4 shadow-xl shadow-black/10 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <p className="text-sm text-muted-foreground">
-              {sorted.length} movimiento{sorted.length !== 1 ? 's' : ''}
-            </p>
-            {seleccionados.size > 0 && (
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={() => setConfirmBulkDelete(true)}
-              >
-                <Trash2 size={13} /> Eliminar {seleccionados.size}
-              </Button>
-            )}
-          </div>
-          <Button size="sm" onClick={onModalOpen}>+ Nuevo movimiento</Button>
+          <p className="text-sm text-muted-foreground">
+            {sorted.length} movimiento{sorted.length !== 1 ? 's' : ''}
+          </p>
+          {seleccionados.size > 0 && (
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => setConfirmBulkDelete(true)}
+            >
+              <Trash2 size={13} /> Eliminar {seleccionados.size}
+            </Button>
+          )}
         </div>
 
         {/* Tabla */}
