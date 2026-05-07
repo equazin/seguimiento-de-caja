@@ -382,7 +382,7 @@ export function PedidosCompra() {
 
       {/* Tabla */}
       <div className="rounded-xl border border-border bg-surface/90 overflow-hidden shadow-xl shadow-black/10">
-        {pedidos === null ? (
+        {pedidos === undefined ? (
           <SkeletonTable rows={5} cols={5} />
         ) : pedidos.length === 0 ? (
           <EmptyState
