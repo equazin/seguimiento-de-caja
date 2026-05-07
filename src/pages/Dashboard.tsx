@@ -5,6 +5,7 @@ import { useCuentasConSaldo } from '@/hooks/useCuentas'
 import { useCategorias } from '@/hooks/useCategorias'
 import { useUltimosMovimientos } from '@/hooks/useMovimientos'
 import { useProductos } from '@/hooks/useCatalogo'
+import { getTopPedidosPendientes } from '@/hooks/usePedidos'
 import { KPICard } from '@/components/dashboard/KPICard'
 import { ChartBarMeses } from '@/components/dashboard/ChartBarMeses'
 import { ChartDonutEgresos } from '@/components/dashboard/ChartDonutEgresos'
@@ -14,7 +15,25 @@ import { Badge } from '@/components/ui/Badge'
 import { SkeletonKPI } from '@/components/ui/Skeleton'
 import { useAuth } from '@/lib/auth'
 import { cn, formatMoney, getMesActual } from '@/lib/formatters'
+import { ESTADO_COMPRA_CONFIG, ESTADO_VENTA_CONFIG } from '@/lib/vinculos'
+import { useEffect, useState } from 'react'
 import type { Movimiento } from '@/db/schema'
+
+interface PedidoPendiente {
+  id: string
+  numero: string
+  monto_total: number
+  saldo_pendiente: number
+  estado: string
+}
+
+function usePedidosPendientes() {
+  const [data, setData] = useState<{ compras: PedidoPendiente[]; ventas: PedidoPendiente[] } | null>(null)
+  useEffect(() => {
+    getTopPedidosPendientes().then(setData).catch(() => setData({ compras: [], ventas: [] }))
+  }, [])
+  return data
+}
 
 interface Props {
   onEditMovimiento: (m: Movimiento) => void
@@ -57,6 +76,8 @@ export function Dashboard({ onEditMovimiento }: Props) {
   const categorias = useCategorias()
   const ultimos = useUltimosMovimientos(10)
   const productos = useProductos({ soloActivos: true })
+  const pedidosPendientes = usePedidosPendientes()
+  const navigate = useNavigate()
   const { label: mesLabel } = getMesActual()
   const productosStockBajo = (productos ?? []).filter(p => p.stockeable && p.stock_actual <= p.stock_minimo)
 
@@ -190,6 +211,78 @@ export function Dashboard({ onEditMovimiento }: Props) {
           onEdit={onEditMovimiento}
         />
       </div>
+
+      {/* Pedidos pendientes */}
+      {pedidosPendientes && (pedidosPendientes.compras.length > 0 || pedidosPendientes.ventas.length > 0) && (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {pedidosPendientes.compras.length > 0 && (
+            <div className="rounded-xl border border-border bg-surface/90 p-4 shadow-xl shadow-black/10">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-white">Compras pendientes</h2>
+                <button
+                  type="button"
+                  onClick={() => navigate('/pedidos/compra')}
+                  className="text-xs text-muted-foreground hover:text-white transition-colors"
+                >
+                  Ver todas →
+                </button>
+              </div>
+              <ul className="space-y-2">
+                {pedidosPendientes.compras.map(p => {
+                  const cfg = ESTADO_COMPRA_CONFIG[p.estado as keyof typeof ESTADO_COMPRA_CONFIG]
+                  return (
+                    <li key={p.id} className="flex items-center justify-between rounded-lg border border-border bg-surface-2 px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-white">{p.numero}</p>
+                        <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium" style={{ background: cfg?.color + '20', color: cfg?.color }}>
+                          {cfg?.label}
+                        </span>
+                      </div>
+                      <div className="ml-3 text-right flex-shrink-0">
+                        <p className="text-xs text-muted-foreground">Saldo</p>
+                        <p className="text-sm font-semibold text-warning">{formatMoney(p.saldo_pendiente)}</p>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
+          {pedidosPendientes.ventas.length > 0 && (
+            <div className="rounded-xl border border-border bg-surface/90 p-4 shadow-xl shadow-black/10">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-white">Ventas por cobrar</h2>
+                <button
+                  type="button"
+                  onClick={() => navigate('/pedidos/venta')}
+                  className="text-xs text-muted-foreground hover:text-white transition-colors"
+                >
+                  Ver todas →
+                </button>
+              </div>
+              <ul className="space-y-2">
+                {pedidosPendientes.ventas.map(p => {
+                  const cfg = ESTADO_VENTA_CONFIG[p.estado as keyof typeof ESTADO_VENTA_CONFIG]
+                  return (
+                    <li key={p.id} className="flex items-center justify-between rounded-lg border border-border bg-surface-2 px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-white">{p.numero}</p>
+                        <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium" style={{ background: cfg?.color + '20', color: cfg?.color }}>
+                          {cfg?.label}
+                        </span>
+                      </div>
+                      <div className="ml-3 text-right flex-shrink-0">
+                        <p className="text-xs text-muted-foreground">Saldo</p>
+                        <p className="text-sm font-semibold text-success">{formatMoney(p.saldo_pendiente)}</p>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

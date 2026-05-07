@@ -12,6 +12,8 @@ import { Compras } from '@/pages/Compras'
 import { DocumentoEditor } from '@/pages/DocumentoEditor'
 import { Catalogo } from '@/pages/Catalogo'
 import { Fiscal } from '@/pages/Fiscal'
+import { PedidosCompra } from '@/pages/PedidosCompra'
+import { PedidosVenta } from '@/pages/PedidosVenta'
 import { MovimientoModal } from '@/components/movimientos/MovimientoModal'
 import { ContactoModal } from '@/components/catalogo/ContactoModal'
 import { ProductoModal } from '@/components/catalogo/ProductoModal'
@@ -160,6 +162,8 @@ function AppShell() {
           <Route path="/compras" element={<Compras />} />
           <Route path="/compras/nuevo" element={<DocumentoEditor tipoOperacion="compra" />} />
           <Route path="/compras/:id" element={<DocumentoEditor tipoOperacion="compra" />} />
+          <Route path="/pedidos/compra" element={<PedidosCompra />} />
+          <Route path="/pedidos/venta" element={<PedidosVenta />} />
           <Route path="/catalogo" element={<Catalogo />} />
           <Route path="/fiscal" element={<Fiscal />} />
           <Route path="/reportes" element={<Reportes />} />

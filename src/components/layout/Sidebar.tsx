@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, ArrowLeftRight, Wallet, BarChart3,
   Settings, ChevronLeft, ChevronRight, Building2,
-  ShoppingCart, Truck, Package, FileText, X,
+  ShoppingCart, Truck, Package, FileText, X, ClipboardList,
 } from 'lucide-react'
 import { cn } from '@/lib/formatters'
 import { useAuth } from '@/lib/auth'
@@ -23,6 +23,13 @@ const NAV_GROUPS = [
       { to: '/cuentas', label: 'Cuentas', icon: Wallet },
       { to: '/ventas', label: 'Ventas', icon: ShoppingCart },
       { to: '/compras', label: 'Compras', icon: Truck },
+    ],
+  },
+  {
+    label: 'Pedidos',
+    items: [
+      { to: '/pedidos/compra', label: 'Órd. de compra', icon: ClipboardList },
+      { to: '/pedidos/venta', label: 'Órd. de venta', icon: ClipboardList },
     ],
   },
   {

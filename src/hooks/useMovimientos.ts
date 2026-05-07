@@ -73,13 +73,16 @@ export function useMovimiento(id: string | null) {
   }, [id], ['movimientos'])
 }
 
-export async function crearMovimiento(data: Omit<Movimiento, 'id' | 'created_at' | 'updated_at'>) {
+export async function crearMovimiento(data: Omit<Movimiento, 'id' | 'created_at' | 'updated_at'>): Promise<Movimiento> {
   const now = new Date().toISOString()
-  const { error } = await supabase
+  const { data: created, error } = await supabase
     .from('movimientos')
     .insert({ ...data, id: uuidv4(), created_at: now, updated_at: now })
+    .select()
+    .single()
   if (error) throw error
   notifyDataChanged()
+  return created
 }
 
 export async function actualizarMovimiento(id: string, data: Partial<Omit<Movimiento, 'id' | 'created_at' | 'updated_at'>>) {

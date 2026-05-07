@@ -54,6 +54,54 @@ export type Configuracion = {
   valor: string
 }
 
+export type EstadoPedidoCompra = 'pendiente' | 'pagado_parcial' | 'pagado_total' | 'cancelado'
+export type EstadoPedidoVenta = 'pendiente' | 'cobrado_parcial' | 'cobrado_total' | 'cancelado'
+
+export type PedidoItem = {
+  descripcion: string
+  cantidad: number
+  precio_unitario: number
+}
+
+export type PedidoCompra = {
+  id: string
+  numero: string
+  proveedor: string
+  fecha: string
+  fecha_vencimiento?: string | null
+  estado: EstadoPedidoCompra
+  monto_total: number
+  monto_total_usd?: number | null
+  descripcion?: string | null
+  items?: PedidoItem[] | null
+  notas?: string | null
+  created_at: string
+}
+
+export type PedidoVenta = {
+  id: string
+  numero: string
+  cliente: string
+  fecha: string
+  fecha_vencimiento?: string | null
+  estado: EstadoPedidoVenta
+  monto_total: number
+  monto_total_usd?: number | null
+  descripcion?: string | null
+  items?: PedidoItem[] | null
+  notas?: string | null
+  created_at: string
+}
+
+export type MovimientoVinculo = {
+  id: string
+  movimiento_id: string
+  pedido_compra_id?: string | null
+  pedido_venta_id?: string | null
+  monto_aplicado: number
+  notas?: string | null
+}
+
 export type Database = {
   public: {
     Tables: {
@@ -79,6 +127,24 @@ export type Database = {
         Row: Configuracion
         Insert: Omit<Configuracion, 'id'> & Partial<Pick<Configuracion, 'id'>>
         Update: Partial<Omit<Configuracion, 'id'>>
+        Relationships: []
+      }
+      pedidos_compra: {
+        Row: PedidoCompra
+        Insert: Omit<PedidoCompra, 'id' | 'created_at'> & Partial<Pick<PedidoCompra, 'id' | 'created_at'>>
+        Update: Partial<Omit<PedidoCompra, 'id' | 'created_at'>>
+        Relationships: []
+      }
+      pedidos_venta: {
+        Row: PedidoVenta
+        Insert: Omit<PedidoVenta, 'id' | 'created_at'> & Partial<Pick<PedidoVenta, 'id' | 'created_at'>>
+        Update: Partial<Omit<PedidoVenta, 'id' | 'created_at'>>
+        Relationships: []
+      }
+      movimiento_vinculos: {
+        Row: MovimientoVinculo
+        Insert: Omit<MovimientoVinculo, 'id'> & Partial<Pick<MovimientoVinculo, 'id'>>
+        Update: Partial<Omit<MovimientoVinculo, 'id'>>
         Relationships: []
       }
     }
