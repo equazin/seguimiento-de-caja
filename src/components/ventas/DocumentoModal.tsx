@@ -582,7 +582,9 @@ export function DocumentoEditorPanel({
     return TIPOS_DOCUMENTO_BASE
   }, [documento?.tipo_documento])
   const tipoOrigenImport = TIPO_ORIGEN_IMPORT[form.tipo_documento] ?? null
-  const puedeImportarPedidoCompra = tipoOperacion === 'venta' && form.tipo_documento === 'pedido'
+  const rutaEsVentas = typeof window !== 'undefined' && window.location.pathname.startsWith('/ventas')
+  const esDocumentoVenta = tipoOperacion === 'venta' || rutaEsVentas
+  const puedeImportarPedidoCompra = esDocumentoVenta && form.tipo_documento === 'pedido'
 
   const tipoCambioNum = Number(form.tipo_cambio.replace(',', '.'))
   const tipoCambioVigente = Number.isFinite(tipoCambioNum) && tipoCambioNum > 0 ? tipoCambioNum : 1
@@ -981,6 +983,22 @@ export function DocumentoEditorPanel({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-semibold text-white">Items</h3>
             <div className="flex flex-wrap gap-2">
+              {puedeImportarPedidoCompra && (
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  onClick={() => abrirImportDocumento({
+                    tipoOrigen: 'pedido',
+                    tipoOperacionOrigen: 'compra',
+                    mantenerContactoDestino: true,
+                  })}
+                  disabled={!editable}
+                >
+                  <ClipboardList size={14} />
+                  Importar pedido compra
+                </Button>
+              )}
               {tipoOrigenImport && (
                 <Button
                   type="button"
@@ -994,22 +1012,6 @@ export function DocumentoEditorPanel({
                 >
                   <ClipboardList size={14} />
                   Importar {tipoDocumentoLabel(tipoOrigenImport).toLowerCase()}
-                </Button>
-              )}
-              {puedeImportarPedidoCompra && (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => abrirImportDocumento({
-                    tipoOrigen: 'pedido',
-                    tipoOperacionOrigen: 'compra',
-                    mantenerContactoDestino: true,
-                  })}
-                  disabled={!editable}
-                >
-                  <ClipboardList size={14} />
-                  Importar pedido compra
                 </Button>
               )}
               <Button
