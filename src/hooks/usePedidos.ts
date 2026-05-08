@@ -4,6 +4,28 @@ import { notifyDataChanged, useSupabaseQuery } from '@/hooks/useSupabaseQuery'
 import { calcularEstadoCompra, calcularEstadoVenta } from '@/lib/vinculos'
 import { v4 as uuidv4 } from 'uuid'
 
+type TablaPedidos = 'pedidos_compra' | 'pedidos_venta'
+
+async function siguienteNumeroPedido(tabla: TablaPedidos, prefijo: string): Promise<string> {
+  const { data, error } = await supabase
+    .from(tabla)
+    .select('numero')
+    .order('created_at', { ascending: false })
+    .limit(100)
+  if (error) throw error
+
+  const rows = (data ?? []) as Array<{ numero: string | null }>
+  let max = 0
+  for (const row of rows) {
+    const match = row.numero?.match(/(\d+)$/)
+    if (!match) continue
+    const n = Number(match[1])
+    if (Number.isFinite(n) && n > max) max = n
+  }
+
+  return `${prefijo}-${String(max + 1).padStart(5, '0')}`
+}
+
 // ─── Filtros ─────────────────────────────────────────────────────────────────
 
 export interface FiltrosPedidoCompra {
@@ -61,9 +83,10 @@ export function usePedidoCompraDetalle(id: string | null) {
 }
 
 export async function crearPedidoCompra(data: Omit<PedidoCompra, 'id' | 'created_at'>): Promise<PedidoCompra> {
+  const numero = data.numero.trim() || await siguienteNumeroPedido('pedidos_compra', 'OC')
   const { data: created, error } = await supabase
     .from('pedidos_compra')
-    .insert({ ...data, id: uuidv4(), created_at: new Date().toISOString() })
+    .insert({ ...data, numero, id: uuidv4(), created_at: new Date().toISOString() })
     .select()
     .single()
   if (error) throw error
@@ -124,9 +147,10 @@ export function usePedidoVentaDetalle(id: string | null) {
 }
 
 export async function crearPedidoVenta(data: Omit<PedidoVenta, 'id' | 'created_at'>): Promise<PedidoVenta> {
+  const numero = data.numero.trim() || await siguienteNumeroPedido('pedidos_venta', 'PV')
   const { data: created, error } = await supabase
     .from('pedidos_venta')
-    .insert({ ...data, id: uuidv4(), created_at: new Date().toISOString() })
+    .insert({ ...data, numero, id: uuidv4(), created_at: new Date().toISOString() })
     .select()
     .single()
   if (error) throw error

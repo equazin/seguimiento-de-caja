@@ -212,7 +212,6 @@ function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
 
   const validate = (): boolean => {
     const errs: Partial<Record<keyof FormState, string>> = {}
-    if (!form.numero.trim()) errs.numero = 'Requerido'
     if (!form.proveedor_id && !form.proveedor.trim()) errs.proveedor_id = 'Seleccioná un proveedor'
     if (!form.fecha) errs.fecha = 'Requerido'
     if (!Number.isFinite(cantidadNum) || cantidadNum <= 0) errs.cantidad = 'Cantidad invalida'
@@ -233,7 +232,7 @@ function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
       const item: PedidoItem = {
         producto_id: form.producto_id || null,
         codigo: producto?.codigo ?? null,
-        descripcion: form.descripcion.trim() || producto?.nombre || `Orden ${form.numero.trim()}`,
+        descripcion: form.descripcion.trim() || producto?.nombre || 'Pedido de compra',
         cantidad: cantidadNum,
         unidad_medida: producto?.unidad_medida ?? 'unidad',
         precio_unitario: precioUnitarioNum,
@@ -244,7 +243,7 @@ function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
         total: totalUsd,
       }
       const data = {
-        numero: form.numero.trim(),
+        numero: pedido ? form.numero.trim() : '',
         proveedor: form.proveedor.trim(),
         proveedor_id: form.proveedor_id || null,
         fecha: form.fecha,
@@ -276,7 +275,13 @@ function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
     <Dialog open={open} onClose={onClose} title={pedido ? 'Editar pedido de compra' : 'Nuevo pedido de compra'} size="lg">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
-          <Input label="Número / referencia" placeholder="OC-2025-0001" value={form.numero} onChange={e => set('numero', e.target.value)} error={errors.numero} required />
+          <Input
+            label="Numero"
+            placeholder="Se asigna automaticamente al guardar"
+            value={pedido ? form.numero : 'Automatico'}
+            disabled
+            hint={pedido ? 'Numero asignado por el sistema' : 'El sistema generara la proxima OC disponible'}
+          />
           <Select
             label="Proveedor"
             value={form.proveedor_id}

@@ -382,7 +382,6 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
 
   const validate = (): boolean => {
     const errs: Partial<Record<keyof FormState, string>> = {}
-    if (!form.numero.trim()) errs.numero = 'Requerido'
     if (!form.cliente_id && !form.cliente.trim()) errs.cliente_id = 'Seleccioná un cliente'
     if (!form.fecha) errs.fecha = 'Requerido'
     if (!hayItemsImportados && (!Number.isFinite(cantidadNum) || cantidadNum <= 0)) errs.cantidad = 'Cantidad invalida'
@@ -403,7 +402,7 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
       const itemManual: PedidoItem = {
         producto_id: form.producto_id || null,
         codigo: producto?.codigo ?? null,
-        descripcion: form.descripcion.trim() || producto?.nombre || `Orden ${form.numero.trim()}`,
+        descripcion: form.descripcion.trim() || producto?.nombre || 'Pedido de venta',
         cantidad: cantidadNum,
         unidad_medida: producto?.unidad_medida ?? 'unidad',
         precio_unitario: precioUnitarioNum,
@@ -415,7 +414,7 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
       }
       const items = hayItemsImportados ? itemsImportados : [itemManual]
       const data = {
-        numero: form.numero.trim(),
+        numero: pedido ? form.numero.trim() : '',
         cliente: form.cliente.trim(),
         cliente_id: form.cliente_id || null,
         fecha: form.fecha,
@@ -449,12 +448,11 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <Input
-            label="Número / referencia"
-            placeholder="PV-2025-0001"
-            value={form.numero}
-            onChange={e => set('numero', e.target.value)}
-            error={errors.numero}
-            required
+            label="Número"
+            placeholder="Se asigna automaticamente al guardar"
+            value={pedido ? form.numero : 'Automatico'}
+            disabled
+            hint={pedido ? 'Numero asignado por el sistema' : 'El sistema generara el proximo PV disponible'}
           />
           <Select
             label="Cliente"
