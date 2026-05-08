@@ -831,7 +831,9 @@ export function DocumentoEditorPanel({
     await submitDocumento(estadoFinal)
   }
 
-  const editable = !documento || documento.estado === 'borrador'
+  const editable = !documento || documento.estado === 'borrador' || (
+    documento.tipo_documento === 'presupuesto' && documento.estado !== 'anulado'
+  )
   const contactoLabel = tipoOperacion === 'venta' ? 'Cliente' : 'Proveedor'
   const contactoEmpty = tipoOperacion === 'venta' ? 'Consumidor final' : 'Sin proveedor'
   const cajaLabel = tipoOperacion === 'venta' ? 'Cuenta de cobro' : 'Cuenta de pago'

@@ -27,6 +27,12 @@ function parseTipoDocumento(value: string | null): TipoDocumentoComercial | unde
     : undefined
 }
 
+function puedeEditarDocumento(documento: Documento): boolean {
+  return documento.estado === 'borrador' || (
+    documento.tipo_documento === 'presupuesto' && documento.estado !== 'anulado'
+  )
+}
+
 export function DocumentoEditor({ tipoOperacion }: DocumentoEditorProps) {
   const { empresa } = useAuth()
   const navigate = useNavigate()
@@ -71,7 +77,7 @@ export function DocumentoEditor({ tipoOperacion }: DocumentoEditorProps) {
   }
 
   const documentoActual = (isNuevo ? null : documento) as Documento | null
-  if (documentoActual && documentoActual.estado !== 'borrador') {
+  if (documentoActual && !puedeEditarDocumento(documentoActual)) {
     return <Navigate replace to={`${basePath}/${documentoActual.id}/detalle`} />
   }
 

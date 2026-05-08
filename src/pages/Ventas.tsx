@@ -131,7 +131,8 @@ export function Ventas() {
   }
 
   function abrirEditar(d: Documento) {
-    navigate(d.estado === 'borrador' ? `/ventas/${d.id}` : `/ventas/${d.id}/detalle`)
+    const editable = d.estado === 'borrador' || (d.tipo_documento === 'presupuesto' && d.estado !== 'anulado')
+    navigate(editable ? `/ventas/${d.id}` : `/ventas/${d.id}/detalle`)
   }
 
   async function anular(d: Documento) {
@@ -435,13 +436,14 @@ function accionesDocumento({
   const esConfirmado = documento.estado === 'confirmado'
   const esAnulado = documento.estado === 'anulado'
   const esEmitido = documento.estado === 'emitido'
+  const puedeEditar = esBorrador || (documento.tipo_documento === 'presupuesto' && !esAnulado)
   const puedeConvertir = !!destinoConversionLabel && !esBorrador && !esAnulado
   const puedeCrearNotas = documento.tipo_documento === 'factura' && !esBorrador && !esAnulado
 
   return [
     {
       id: 'ver',
-      label: esBorrador ? 'Editar' : 'Ver detalle',
+      label: puedeEditar ? 'Editar' : 'Ver detalle',
       icon: Edit2,
       onClick: onEditar,
     },

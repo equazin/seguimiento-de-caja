@@ -85,7 +85,9 @@ export function DocumentoDetalle({ tipoOperacion }: DocumentoDetalleProps) {
   const contactoId = tipoOperacion === 'venta' ? documento.cliente_id : documento.proveedor_id
   const contacto = contactoId ? contactosMap.get(contactoId) : null
   const contactoFallback = tipoOperacion === 'venta' ? 'Consumidor final' : 'Sin proveedor'
-  const puedeEditar = documento.estado === 'borrador'
+  const puedeEditar = documento.estado === 'borrador' || (
+    documento.tipo_documento === 'presupuesto' && documento.estado !== 'anulado'
+  )
 
   return (
     <div className="space-y-5">
@@ -315,7 +317,10 @@ function DualMoney({
 
 function documentoHref(documento: Documento): string {
   const base = documento.tipo_operacion === 'venta' ? '/ventas' : '/compras'
-  return documento.estado === 'borrador'
+  const editable = documento.estado === 'borrador' || (
+    documento.tipo_documento === 'presupuesto' && documento.estado !== 'anulado'
+  )
+  return editable
     ? `${base}/${documento.id}`
     : `${base}/${documento.id}/detalle`
 }
