@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Navigate, Routes, Route, useNavigate } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { Layout } from '@/components/layout/Layout'
 import { Dashboard } from '@/pages/Dashboard'
@@ -171,6 +171,7 @@ function AppShell() {
           <Route path="/fiscal" element={<Fiscal />} />
           <Route path="/reportes" element={<Reportes />} />
           <Route path="/configuracion" element={<Configuracion />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
       <MovimientoModal
@@ -194,9 +195,14 @@ function AppShell() {
 }
 
 export default function App() {
+  const githubPagesBase = '/seguimiento-de-caja'
+  const basename = window.location.pathname.startsWith(githubPagesBase)
+    ? githubPagesBase
+    : import.meta.env.BASE_URL
+
   return (
     <AuthProvider>
-      <BrowserRouter basename={import.meta.env.BASE_URL}>
+      <BrowserRouter basename={basename}>
         <AppShell />
       </BrowserRouter>
     </AuthProvider>
