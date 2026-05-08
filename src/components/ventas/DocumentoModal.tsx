@@ -62,6 +62,7 @@ interface DocumentoModalProps {
 interface DocumentoEditorPanelProps {
   documento: Documento | null
   tipoOperacion?: TipoOperacion
+  initialTipoDocumento?: TipoDocumentoComercial
   onCancel: () => void
   onSaved?: (documento: Documento | null) => void
   variant?: 'modal' | 'page'
@@ -88,9 +89,13 @@ interface FormState {
   items: ItemDraft[]
 }
 
-function emptyForm(): FormState {
+function tipoDocumentoInicial(tipo?: TipoDocumentoComercial): TipoDocumentoForm {
+  return tipo && TIPOS_DOCUMENTO_BASE.some(t => t.value === tipo) ? tipo : 'presupuesto'
+}
+
+function emptyForm(tipo?: TipoDocumentoComercial): FormState {
   return {
-    tipo_documento: 'presupuesto',
+    tipo_documento: tipoDocumentoInicial(tipo),
     contacto_id: '',
     fecha: todayStr(),
     fecha_vencimiento: '',
@@ -460,6 +465,7 @@ export function getDocumentoTitulo(documento: Documento | null, tipoOperacion: T
 export function DocumentoEditorPanel({
   documento,
   tipoOperacion = 'venta',
+  initialTipoDocumento,
   onCancel,
   onSaved,
   variant = 'modal',
@@ -516,11 +522,11 @@ export function DocumentoEditorPanel({
         items: [],  // los carga el effect siguiente cuando llegan
       })
     } else {
-      setForm(emptyForm())
+      setForm(emptyForm(initialTipoDocumento))
     }
     setError(null)
     setDocumentoOrigenId(null)
-  }, [documento?.id, tipoOperacion])
+  }, [documento?.id, initialTipoDocumento, tipoOperacion])
 
   useEffect(() => {
     if (!documento || !movimientoCaja) return

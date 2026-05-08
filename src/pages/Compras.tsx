@@ -1,6 +1,6 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Plus, Edit2, Trash2, Search, FileText, CheckCircle2, XCircle, Download, RotateCcw, Truck, ArrowRightLeft, FileMinus, FilePlus } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -43,6 +43,19 @@ const ESTADOS_LABEL: Record<EstadoDocumento, string> = {
 }
 
 const POR_PAGINA = 25
+const TIPOS_FILTRO_DOCUMENTO: TipoDocumentoComercial[] = [
+  'pedido',
+  'remito',
+  'factura',
+  'nota_credito',
+  'nota_debito',
+]
+
+function parseTipoDocumentoFiltro(value: string | null): TipoDocumentoComercial | '' {
+  return TIPOS_FILTRO_DOCUMENTO.includes(value as TipoDocumentoComercial)
+    ? value as TipoDocumentoComercial
+    : ''
+}
 
 function badgeForEstado(estado: EstadoDocumento) {
   if (estado === 'borrador') return <Badge variant="borrador">{ESTADOS_LABEL[estado]}</Badge>
@@ -53,11 +66,18 @@ function badgeForEstado(estado: EstadoDocumento) {
 export function Compras() {
   const { empresa } = useAuth()
   const navigate = useNavigate()
-  const [tipoDocumento, setTipoDocumento] = useState<TipoDocumentoComercial | ''>('')
+  const [searchParams] = useSearchParams()
+  const tipoDocumentoParam = parseTipoDocumentoFiltro(searchParams.get('tipo'))
+  const [tipoDocumento, setTipoDocumento] = useState<TipoDocumentoComercial | ''>(tipoDocumentoParam)
   const [estado, setEstado] = useState<EstadoDocumento | ''>('')
   const [busqueda, setBusqueda] = useState('')
   const [pagina, setPagina] = useState(1)
   const [confirmDelete, setConfirmDelete] = useState<Documento | null>(null)
+
+  useEffect(() => {
+    setTipoDocumento(tipoDocumentoParam)
+    setPagina(1)
+  }, [tipoDocumentoParam])
 
   const filtros = useMemo(
     () => ({

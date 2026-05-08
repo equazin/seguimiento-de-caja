@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Link, NavLink, useLocation } from 'react-router-dom'
 import {
   ArrowLeftRight,
   BarChart3,
   Building2,
+  ChevronDown,
   ClipboardList,
   FileText,
   LayoutDashboard,
@@ -11,10 +12,12 @@ import {
   Menu,
   Moon,
   Package,
+  Receipt,
   Settings,
   ShoppingCart,
   Sun,
   Truck,
+  UsersRound,
   Wallet,
   X,
   type LucideIcon,
@@ -32,18 +35,60 @@ interface NavItem {
   end?: boolean
 }
 
-const NAV_ITEMS: NavItem[] = [
+interface BusinessMenu {
+  id: 'ventas' | 'compras'
+  label: string
+  icon: LucideIcon
+  activePaths: string[]
+  items: NavItem[]
+}
+
+const NAV_ITEMS_BEFORE: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/movimientos', label: 'Movimientos', icon: ArrowLeftRight },
   { to: '/cuentas', label: 'Cuentas', icon: Wallet },
-  { to: '/ventas', label: 'Ventas', icon: ShoppingCart },
-  { to: '/compras', label: 'Compras', icon: Truck },
-  { to: '/pedidos/compra', label: 'Órd. compra', icon: ClipboardList },
-  { to: '/pedidos/venta', label: 'Órd. venta', icon: ClipboardList },
+]
+
+const NAV_ITEMS_AFTER: NavItem[] = [
   { to: '/catalogo', label: 'Catálogo', icon: Package },
   { to: '/fiscal', label: 'Fiscal', icon: FileText },
   { to: '/reportes', label: 'Reportes', icon: BarChart3 },
   { to: '/configuracion', label: 'Configuración', icon: Settings },
+]
+
+const BUSINESS_MENUS: BusinessMenu[] = [
+  {
+    id: 'ventas',
+    label: 'Ventas',
+    icon: ShoppingCart,
+    activePaths: ['/ventas', '/pedidos/venta'],
+    items: [
+      { to: '/ventas', label: 'Ver ventas', icon: ShoppingCart },
+      { to: '/ventas/nuevo?tipo=factura', label: 'Nueva venta', icon: Receipt },
+      { to: '/ventas?tipo=presupuesto', label: 'Presupuestos', icon: FileText },
+      { to: '/pedidos/venta', label: 'Pedidos de venta', icon: ClipboardList },
+      { to: '/ventas?tipo=remito', label: 'Remitos', icon: Truck },
+      { to: '/ventas?tipo=factura', label: 'Facturas', icon: FileText },
+      { to: '/movimientos?tipo=ingreso', label: 'Recibos', icon: Receipt },
+      { to: '/catalogo?tab=clientes', label: 'Clientes', icon: UsersRound },
+    ],
+  },
+  {
+    id: 'compras',
+    label: 'Compras',
+    icon: Truck,
+    activePaths: ['/compras', '/pedidos/compra'],
+    items: [
+      { to: '/compras', label: 'Ver compras', icon: Truck },
+      { to: '/compras/nuevo?tipo=factura', label: 'Nueva compra', icon: Receipt },
+      { to: '/pedidos/compra', label: 'Pedidos de compra', icon: ClipboardList },
+      { to: '/compras?tipo=remito', label: 'Remitos', icon: Truck },
+      { to: '/compras?tipo=factura', label: 'Facturas', icon: FileText },
+      { to: '/movimientos?tipo=egreso', label: 'Recibos', icon: Receipt },
+      { to: '/catalogo?tab=proveedores', label: 'Proveedores', icon: UsersRound },
+      { to: '/movimientos?tipo=egreso', label: 'Gastos', icon: Wallet },
+    ],
+  },
 ]
 
 interface TopNavProps {
@@ -54,10 +99,38 @@ function avatarInicial(email: string): string {
   return email.trim().charAt(0).toUpperCase() || '?'
 }
 
+function pathMatches(pathname: string, paths: string[]) {
+  return paths.some(path => pathname === path || pathname.startsWith(`${path}/`))
+}
+
+function DesktopNavLink({ item }: { item: NavItem }) {
+  const { to, label, icon: Icon, end } = item
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      className={({ isActive }) =>
+        cn(
+          'relative flex items-center gap-2 whitespace-nowrap px-3 py-3 text-sm font-medium transition-colors',
+          isActive
+            ? 'text-white after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary'
+            : 'text-muted-foreground hover:text-white'
+        )
+      }
+    >
+      <Icon size={15} className="flex-shrink-0" />
+      {label}
+    </NavLink>
+  )
+}
+
 export function TopNav({ onGlobalAction }: TopNavProps) {
   const { session, signOut, empresa } = useAuth()
   const { theme, toggleTheme } = useTheme()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [desktopMenuOpen, setDesktopMenuOpen] = useState<BusinessMenu['id'] | null>(null)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState<BusinessMenu['id'] | null>('ventas')
+  const desktopMenuRef = useRef<HTMLDivElement>(null)
   const location = useLocation()
 
   const email = session?.user.email ?? ''
@@ -68,12 +141,29 @@ export function TopNav({ onGlobalAction }: TopNavProps) {
     ? ambiente === 'produccion' ? 'Producción' : 'Homologación'
     : 'Caja & Facturación'
 
-  // cerrar drawer al navegar
   useEffect(() => {
     setMobileOpen(false)
-  }, [location.pathname])
+    setDesktopMenuOpen(null)
+  }, [location.pathname, location.search])
 
-  // bloquear scroll del body cuando el drawer está abierto
+  useEffect(() => {
+    if (!desktopMenuOpen) return
+    function onPointerDown(event: MouseEvent) {
+      if (!desktopMenuRef.current?.contains(event.target as Node)) {
+        setDesktopMenuOpen(null)
+      }
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setDesktopMenuOpen(null)
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [desktopMenuOpen])
+
   useEffect(() => {
     if (!mobileOpen) return
     const original = document.body.style.overflow
@@ -83,7 +173,6 @@ export function TopNav({ onGlobalAction }: TopNavProps) {
     }
   }, [mobileOpen])
 
-  // cerrar con Escape
   useEffect(() => {
     if (!mobileOpen) return
     function onKey(event: KeyboardEvent) {
@@ -155,33 +244,74 @@ export function TopNav({ onGlobalAction }: TopNavProps) {
           </div>
         </div>
 
-        {/* Fila de links - solo desktop */}
         <nav className="hidden border-t border-border md:block">
-          <ul className="flex items-center gap-1 overflow-x-auto px-4 md:px-6">
-            {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
-              <li key={to}>
-                <NavLink
-                  to={to}
-                  end={end}
-                  className={({ isActive }) =>
-                    cn(
-                      'relative flex items-center gap-2 whitespace-nowrap px-3 py-3 text-sm font-medium transition-colors',
-                      isActive
-                        ? 'text-white after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary'
-                        : 'text-muted-foreground hover:text-white'
-                    )
-                  }
-                >
-                  <Icon size={15} className="flex-shrink-0" />
-                  {label}
-                </NavLink>
-              </li>
-            ))}
-          </ul>
+          <div ref={desktopMenuRef}>
+            <ul className="flex items-center gap-1 overflow-x-auto px-4 md:px-6">
+              {NAV_ITEMS_BEFORE.map(item => (
+                <li key={item.to}>
+                  <DesktopNavLink item={item} />
+                </li>
+              ))}
+
+              {BUSINESS_MENUS.map(menu => {
+                const isActive = pathMatches(location.pathname, menu.activePaths)
+                const isOpen = desktopMenuOpen === menu.id
+                const Icon = menu.icon
+                return (
+                  <li
+                    key={menu.id}
+                    className="relative"
+                    onMouseEnter={() => setDesktopMenuOpen(menu.id)}
+                    onMouseLeave={() => setDesktopMenuOpen(null)}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setDesktopMenuOpen(isOpen ? null : menu.id)}
+                      className={cn(
+                        'relative flex items-center gap-2 whitespace-nowrap px-3 py-3 text-sm font-medium transition-colors',
+                        isActive || isOpen
+                          ? 'text-white after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary'
+                          : 'text-muted-foreground hover:text-white'
+                      )}
+                      aria-expanded={isOpen}
+                      aria-haspopup="menu"
+                    >
+                      <Icon size={15} className="flex-shrink-0" />
+                      {menu.label}
+                      <ChevronDown size={14} className={cn('transition-transform', isOpen && 'rotate-180')} />
+                    </button>
+
+                    {isOpen && (
+                      <div className="absolute left-0 top-full z-40 mt-0 w-64 overflow-hidden rounded-lg border border-border bg-surface shadow-2xl shadow-black/40">
+                        <div className="grid grid-cols-1 p-1">
+                          {menu.items.map(({ to, label, icon: ItemIcon }) => (
+                            <Link
+                              key={`${menu.id}-${label}`}
+                              to={to}
+                              className="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-surface-2 hover:text-white"
+                              role="menuitem"
+                            >
+                              <ItemIcon size={16} className="shrink-0 text-current" />
+                              <span className="min-w-0 truncate">{label}</span>
+                            </Link>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </li>
+                )
+              })}
+
+              {NAV_ITEMS_AFTER.map(item => (
+                <li key={item.to}>
+                  <DesktopNavLink item={item} />
+                </li>
+              ))}
+            </ul>
+          </div>
         </nav>
       </header>
 
-      {/* Drawer mobile */}
       {mobileOpen && (
         <button
           type="button"
@@ -222,7 +352,68 @@ export function TopNav({ onGlobalAction }: TopNavProps) {
         </div>
         <nav className="flex-1 overflow-y-auto py-4">
           <ul className="space-y-1 px-2">
-            {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
+            {NAV_ITEMS_BEFORE.map(({ to, label, icon: Icon, end }) => (
+              <li key={to}>
+                <NavLink
+                  to={to}
+                  end={end}
+                  onClick={() => setMobileOpen(false)}
+                  className={({ isActive }) =>
+                    cn(
+                      'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                      'hover:bg-surface-2 hover:text-white',
+                      isActive
+                        ? 'border border-primary/30 bg-primary/15 text-white'
+                        : 'text-muted-foreground'
+                    )
+                  }
+                >
+                  <Icon size={18} className="flex-shrink-0 text-current" />
+                  {label}
+                </NavLink>
+              </li>
+            ))}
+
+            {BUSINESS_MENUS.map(menu => {
+              const isActive = pathMatches(location.pathname, menu.activePaths)
+              const isOpen = mobileMenuOpen === menu.id
+              const Icon = menu.icon
+              return (
+                <li key={menu.id}>
+                  <button
+                    type="button"
+                    onClick={() => setMobileMenuOpen(isOpen ? null : menu.id)}
+                    className={cn(
+                      'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors hover:bg-surface-2 hover:text-white',
+                      isActive ? 'border border-primary/30 bg-primary/15 text-white' : 'text-muted-foreground'
+                    )}
+                    aria-expanded={isOpen}
+                  >
+                    <Icon size={18} className="flex-shrink-0 text-current" />
+                    <span className="flex-1">{menu.label}</span>
+                    <ChevronDown size={15} className={cn('transition-transform', isOpen && 'rotate-180')} />
+                  </button>
+                  {isOpen && (
+                    <ul className="mt-1 space-y-1 pl-5">
+                      {menu.items.map(({ to, label, icon: ItemIcon }) => (
+                        <li key={`${menu.id}-mobile-${label}`}>
+                          <Link
+                            to={to}
+                            onClick={() => setMobileOpen(false)}
+                            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-surface-2 hover:text-white"
+                          >
+                            <ItemIcon size={16} className="flex-shrink-0 text-current" />
+                            {label}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              )
+            })}
+
+            {NAV_ITEMS_AFTER.map(({ to, label, icon: Icon, end }) => (
               <li key={to}>
                 <NavLink
                   to={to}

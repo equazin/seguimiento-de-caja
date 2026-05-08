@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Trash2, Edit2, ChevronLeft, ChevronRight, ArrowUpDown, ArrowLeftRight } from 'lucide-react'
 import { useMovimientos, eliminarMovimiento, eliminarMovimientosBulk } from '@/hooks/useMovimientos'
 import { useCategorias } from '@/hooks/useCategorias'
@@ -21,20 +22,32 @@ const POR_PAGINA = 25
 
 type SortKey = 'fecha' | 'monto_ars' | 'descripcion'
 type SortDir = 'asc' | 'desc'
+type TipoMovimientoFiltro = NonNullable<MovimientoFiltros['tipo']>
 
 interface Props {
   onModalOpen: () => void
   onEdit: (m: Movimiento) => void
 }
 
+function parseTipoMovimiento(value: string | null): TipoMovimientoFiltro {
+  return value === 'ingreso' || value === 'egreso' ? value : ''
+}
+
 export function Movimientos({ onModalOpen, onEdit }: Props) {
-  const [filtros, setFiltros] = useState<MovimientoFiltros>({})
+  const [searchParams] = useSearchParams()
+  const tipoParam = parseTipoMovimiento(searchParams.get('tipo'))
+  const [filtros, setFiltros] = useState<MovimientoFiltros>(tipoParam ? { tipo: tipoParam } : {})
   const [pagina, setPagina] = useState(1)
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set())
   const [sortKey, setSortKey] = useState<SortKey>('fecha')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
+
+  useEffect(() => {
+    setFiltros(prev => ({ ...prev, tipo: tipoParam || undefined }))
+    setPagina(1)
+  }, [tipoParam])
 
   const movimientos = useMovimientos(filtros)
   const categorias = useCategorias()

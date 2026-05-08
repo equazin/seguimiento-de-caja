@@ -1,6 +1,6 @@
 import { ArrowLeft, FileText } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { Navigate, useNavigate, useParams } from 'react-router-dom'
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Skeleton } from '@/components/ui/Skeleton'
@@ -13,19 +13,30 @@ import { useAuth } from '@/lib/auth'
 import { formatDate, formatMoney } from '@/lib/formatters'
 import { tipoDocumentoLabel } from '@/lib/documentos'
 import type { Documento, TipoOperacion } from '@/db/schema'
+import type { TipoDocumentoComercial } from '@/db/schema'
 
 interface DocumentoEditorProps {
   tipoOperacion: TipoOperacion
+}
+
+const TIPOS_NUEVO_DOCUMENTO: TipoDocumentoComercial[] = ['presupuesto', 'pedido', 'remito', 'factura']
+
+function parseTipoDocumento(value: string | null): TipoDocumentoComercial | undefined {
+  return TIPOS_NUEVO_DOCUMENTO.includes(value as TipoDocumentoComercial)
+    ? value as TipoDocumentoComercial
+    : undefined
 }
 
 export function DocumentoEditor({ tipoOperacion }: DocumentoEditorProps) {
   const { empresa } = useAuth()
   const navigate = useNavigate()
   const { id } = useParams()
+  const [searchParams] = useSearchParams()
   const basePath = tipoOperacion === 'venta' ? '/ventas' : '/compras'
   const documento = useDocumento(id ?? null)
   const relaciones = useDocumentoRelaciones(id ?? null)
   const isNuevo = !id
+  const initialTipoDocumento = isNuevo ? parseTipoDocumento(searchParams.get('tipo')) : undefined
 
   function volver() {
     navigate(basePath)
@@ -149,6 +160,7 @@ export function DocumentoEditor({ tipoOperacion }: DocumentoEditorProps) {
         <DocumentoEditorPanel
           documento={documentoActual}
           tipoOperacion={tipoOperacion}
+          initialTipoDocumento={initialTipoDocumento}
           onCancel={volver}
           onSaved={volver}
           variant="page"

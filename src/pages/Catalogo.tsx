@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Users, Truck, Package, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/formatters'
 import { ContactosTab } from '@/components/catalogo/ContactosTab'
@@ -15,8 +16,14 @@ const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
   { id: 'productos', label: 'Productos', icon: Package },
 ]
 
+function parseTab(value: string | null): Tab {
+  return value === 'proveedores' || value === 'productos' ? value : 'clientes'
+}
+
 export function Catalogo() {
-  const [tab, setTab] = useState<Tab>('clientes')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tabParam = parseTab(searchParams.get('tab'))
+  const [tab, setTab] = useState<Tab>(tabParam)
   const { empresa } = useAuth()
   const clientes = useClientes({ soloActivos: false })
   const proveedores = useProveedores({ soloActivos: false })
@@ -26,6 +33,15 @@ export function Catalogo() {
     clientes: clientes ? clientes.length : null,
     proveedores: proveedores ? proveedores.length : null,
     productos: productos ? productos.length : null,
+  }
+
+  useEffect(() => {
+    setTab(tabParam)
+  }, [tabParam])
+
+  function cambiarTab(nextTab: Tab) {
+    setTab(nextTab)
+    setSearchParams(nextTab === 'clientes' ? {} : { tab: nextTab })
   }
 
   if (!empresa) {
@@ -50,7 +66,7 @@ export function Catalogo() {
           return (
             <button
               key={id}
-              onClick={() => setTab(id)}
+              onClick={() => cambiarTab(id)}
               className={cn(
                 'flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors',
                 isActive
