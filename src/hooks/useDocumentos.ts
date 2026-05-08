@@ -13,6 +13,7 @@ import type {
 import { notifyDataChanged, useSupabaseQuery } from '@/hooks/useSupabaseQuery'
 import { useAuth } from '@/lib/auth'
 import {
+  aplicarMargenPresupuesto,
   calcularTotales,
   itemFromCalculado,
   siguienteNumeroInterno,
@@ -182,6 +183,7 @@ interface CrearDocumentoInput {
   estado: EstadoDocumento
   items: ItemDraft[]
   origenDocumentoId?: string | null
+  margenPorcentaje?: number | null
 }
 
 export async function crearDocumento(input: CrearDocumentoInput): Promise<Documento> {
@@ -189,10 +191,15 @@ export async function crearDocumento(input: CrearDocumentoInput): Promise<Docume
     throw new Error('Las notas se crean desde una factura')
   }
 
-  const { items, totales } = calcularTotales(input.items, {
+  const { items, totales: totalesBase } = calcularTotales(input.items, {
     monedaInput: input.moneda,
     tipoCambio: input.tipoCambio,
   })
+  const totales = aplicarMargenPresupuesto(
+    totalesBase,
+    input.tipoDocumento,
+    input.margenPorcentaje
+  )
   const numero = await siguienteNumeroInterno(
     input.empresaId,
     input.tipoOperacion,
@@ -275,14 +282,20 @@ interface ActualizarDocumentoInput {
   estado: EstadoDocumento
   items: ItemDraft[]
   origenDocumentoId?: string | null
+  margenPorcentaje?: number | null
 }
 
 export async function actualizarDocumento(input: ActualizarDocumentoInput): Promise<void> {
-  const { items, totales } = calcularTotales(input.items, {
+  const { items, totales: totalesBase } = calcularTotales(input.items, {
     monedaInput: input.moneda,
     tipoCambio: input.tipoCambio,
   })
   const actual = await getDocumentoById(input.id)
+  const totales = aplicarMargenPresupuesto(
+    totalesBase,
+    actual.tipo_documento,
+    input.margenPorcentaje
+  )
   const documentoValidado: Documento = {
     ...actual,
     cliente_id: input.clienteId,

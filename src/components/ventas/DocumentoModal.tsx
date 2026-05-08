@@ -14,7 +14,12 @@ import {
   useDocumentoItems,
 } from '@/hooks/useDocumentos'
 import { useMovimiento } from '@/hooks/useMovimientos'
-import { calcularTotales, tipoDocumentoLabel, type ItemDraft } from '@/lib/documentos'
+import {
+  aplicarMargenPresupuesto,
+  calcularTotales,
+  tipoDocumentoLabel,
+  type ItemDraft,
+} from '@/lib/documentos'
 import { METODOS_PAGO } from '@/lib/constants'
 import { cn, formatDateTime, formatMoney, todayStr } from '@/lib/formatters'
 import { ImportarDesdeDocumentoDialog } from '@/components/ventas/ImportarDesdeDocumentoDialog'
@@ -86,6 +91,7 @@ interface FormState {
   metodo_pago: MetodoPago
   observaciones: string
   estado: EstadoDocumento
+  margen_porcentaje: string
   items: ItemDraft[]
 }
 
@@ -105,6 +111,7 @@ function emptyForm(tipo?: TipoDocumentoComercial): FormState {
     metodo_pago: 'transferencia',
     observaciones: '',
     estado: 'borrador',
+    margen_porcentaje: '',
     items: [],
   }
 }
@@ -120,6 +127,27 @@ function emptyItem(): ItemDraft {
     bonificacion: 0,
     alicuota_iva: 21,
   }
+}
+
+function parseMargenPorcentaje(value: string): number {
+  if (!value.trim()) return 0
+  const porcentaje = Number(value.replace(',', '.'))
+  return Number.isFinite(porcentaje) ? Math.max(0, porcentaje) : 0
+}
+
+function margenPorcentajeFromDocumento(documento: Documento): string {
+  if (documento.tipo_documento !== 'presupuesto') return ''
+
+  const margen = documento.moneda === 'USD' && documento.percepciones_usd != null
+    ? Number(documento.percepciones_usd)
+    : Number(documento.percepciones)
+  const base = documento.moneda === 'USD' && documento.subtotal_usd != null && documento.iva_total_usd != null
+    ? Number(documento.subtotal_usd) + Number(documento.iva_total_usd)
+    : Number(documento.subtotal) + Number(documento.iva_total)
+
+  if (!Number.isFinite(margen) || !Number.isFinite(base) || margen <= 0 || base <= 0) return ''
+  const porcentaje = Math.round((margen / base) * 10000) / 100
+  return Number.isInteger(porcentaje) ? String(porcentaje) : porcentaje.toFixed(2)
 }
 
 function tituloCaja(tipoDocumento: TipoDocumentoForm, tipoOperacion: TipoOperacion): string {
@@ -519,6 +547,7 @@ export function DocumentoEditorPanel({
         metodo_pago: movimientoCaja?.metodo_pago ?? 'transferencia',
         observaciones: documento.observaciones ?? '',
         estado: documento.estado,
+        margen_porcentaje: margenPorcentajeFromDocumento(documento),
         items: [],  // los carga el effect siguiente cuando llegan
       })
     } else {
@@ -601,6 +630,15 @@ export function DocumentoEditorPanel({
     }).totales,
     [form.items, form.moneda, tipoCambioVigente]
   )
+  const margenPorcentaje = parseMargenPorcentaje(form.margen_porcentaje)
+  const totalesConMargen = useMemo(
+    () => aplicarMargenPresupuesto(
+      totales,
+      form.tipo_documento as TipoDocumentoComercial,
+      margenPorcentaje
+    ),
+    [totales, form.tipo_documento, margenPorcentaje]
+  )
   const esNota = form.tipo_documento === 'nota_credito' || form.tipo_documento === 'nota_debito'
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
@@ -609,7 +647,11 @@ export function DocumentoEditorPanel({
 
   function cambiarTipoDocumento(tipoDocumento: TipoDocumentoForm) {
     setDocumentoOrigenId(null)
-    setForm(prev => ({ ...prev, tipo_documento: tipoDocumento }))
+    setForm(prev => ({
+      ...prev,
+      tipo_documento: tipoDocumento,
+      margen_porcentaje: tipoDocumento === 'presupuesto' ? prev.margen_porcentaje : '',
+    }))
   }
 
   function cambiarMoneda(nuevaMoneda: 'ARS' | 'USD') {
@@ -786,6 +828,15 @@ export function DocumentoEditorPanel({
       setError('La nota necesita un total mayor a cero')
       return
     }
+    const margenInput = Number(form.margen_porcentaje.replace(',', '.'))
+    if (
+      form.tipo_documento === 'presupuesto' &&
+      form.margen_porcentaje.trim() &&
+      (!Number.isFinite(margenInput) || margenInput < 0)
+    ) {
+      setError('El margen debe ser un porcentaje mayor o igual a cero')
+      return
+    }
     setError(null)
     setSubmitting(true)
     try {
@@ -802,6 +853,7 @@ export function DocumentoEditorPanel({
         estado: estadoFinal,
         items: form.items,
         origenDocumentoId: documentoOrigenId,
+        margenPorcentaje: form.tipo_documento === 'presupuesto' ? margenPorcentaje : 0,
       }
       if (documento) {
         await actualizarDocumento({ id: documento.id, ...payload })
@@ -1203,6 +1255,39 @@ export function DocumentoEditorPanel({
                 </div>
               </div>
             </div>
+            {form.tipo_documento === 'presupuesto' && (
+              <div className="flex items-center justify-between gap-4 text-muted-foreground">
+                <label className="min-w-0 text-sm" htmlFor="margen-presupuesto">
+                  Margen
+                </label>
+                <div className="flex items-center gap-3">
+                  <div className="relative w-24">
+                    <input
+                      id="margen-presupuesto"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={form.margen_porcentaje}
+                      onChange={e => update('margen_porcentaje', e.target.value)}
+                      disabled={!editable}
+                      placeholder="0"
+                      className="w-full rounded-lg border border-border bg-surface px-3 py-2 pr-7 text-right text-sm text-white placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50"
+                    />
+                    <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                      %
+                    </span>
+                  </div>
+                  <div className="min-w-24 text-right">
+                    <div className="text-white">
+                      {formatMoney(form.moneda === 'USD' ? totalesConMargen.percepciones_usd : totalesConMargen.percepciones, form.moneda)}
+                    </div>
+                    <div className="text-[11px] text-muted-foreground">
+                      â‰ˆ {formatMoney(form.moneda === 'USD' ? totalesConMargen.percepciones : totalesConMargen.percepciones_usd, form.moneda === 'USD' ? 'ARS' : 'USD')}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
             {totales.exento > 0 && (
               <div className="flex items-baseline justify-between text-muted-foreground">
                 <span>Exento</span>
@@ -1217,9 +1302,9 @@ export function DocumentoEditorPanel({
             <div className="border-t border-border pt-2 flex items-baseline justify-between font-semibold">
               <span className="text-white">Total</span>
               <div className="text-right">
-                <div className="text-base text-white">{formatMoney(form.moneda === 'USD' ? totales.total_usd : totales.total, form.moneda)}</div>
+                <div className="text-base text-white">{formatMoney(form.moneda === 'USD' ? totalesConMargen.total_usd : totalesConMargen.total, form.moneda)}</div>
                 <div className="text-[11px] font-normal text-muted-foreground">
-                  ≈ {formatMoney(form.moneda === 'USD' ? totales.total : totales.total_usd, form.moneda === 'USD' ? 'ARS' : 'USD')}
+                  ≈ {formatMoney(form.moneda === 'USD' ? totalesConMargen.total : totalesConMargen.total_usd, form.moneda === 'USD' ? 'ARS' : 'USD')}
                 </div>
               </div>
             </div>

@@ -139,6 +139,29 @@ export function calcularTotales(
   }
 }
 
+export function aplicarMargenPresupuesto(
+  totales: TotalesDocumento,
+  tipoDocumento: TipoDocumentoComercial,
+  margenPorcentaje?: number | null
+): TotalesDocumento {
+  if (tipoDocumento !== 'presupuesto') return totales
+
+  const porcentaje = Number(margenPorcentaje ?? 0)
+  const margenPct = Number.isFinite(porcentaje) ? Math.max(0, porcentaje) : 0
+  const baseArs = round(totales.subtotal + totales.iva_total)
+  const baseUsd = round(totales.subtotal_usd + totales.iva_total_usd)
+  const margenArs = round(baseArs * (margenPct / 100))
+  const margenUsd = round(baseUsd * (margenPct / 100))
+
+  return {
+    ...totales,
+    percepciones: margenArs,
+    percepciones_usd: margenUsd,
+    total: round(baseArs + margenArs),
+    total_usd: round(baseUsd + margenUsd),
+  }
+}
+
 // =========================================================================
 // Numeracion interna por empresa + tipo de operacion + tipo de documento
 // =========================================================================

@@ -274,7 +274,7 @@ export function DocumentoDetalle({ tipoOperacion }: DocumentoDetalleProps) {
                 </DetailRow>
               )}
               {Number(documento.percepciones) > 0 && (
-                <DetailRow label="Percepciones">
+                <DetailRow label={documento.tipo_documento === 'presupuesto' ? 'Margen' : 'Percepciones'}>
                   <DualMoney usd={documento.percepciones_usd} ars={documento.percepciones} />
                 </DetailRow>
               )}
