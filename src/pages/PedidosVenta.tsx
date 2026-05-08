@@ -155,9 +155,9 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
     if (pedido) {
       const tcPedido = pedido.tipo_cambio
       const item = pedido.items?.[0]
-      const ivaFallback = 21
+      const ivaFallback = 0
       const totalUsd = Number(pedido.monto_total_usd ?? 0)
-      const precioFallback = totalUsd > 0 ? round2(totalUsd / (1 + ivaFallback / 100)) : 0
+      const precioFallback = totalUsd > 0 ? totalUsd : 0
       setForm({
         numero: pedido.numero,
         cliente_id: pedido.cliente_id ?? '',

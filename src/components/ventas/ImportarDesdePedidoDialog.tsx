@@ -47,32 +47,48 @@ function pedidoMatchesContacto(pedido: Pedido, contactoId: string | null): boole
   return pedido.cliente_id === contactoId
 }
 
+function round2(n: number): number {
+  return Math.round(n * 100) / 100
+}
+
 function itemsDesdePedido(pedido: Pedido): ItemDraft[] {
   const items = pedido.items ?? []
   if (items.length > 0) {
-    return items.map(it => ({
-      producto_id: it.producto_id ?? null,
-      codigo: it.codigo ?? null,
-      descripcion: it.descripcion,
-      cantidad: Number(it.cantidad) || 1,
-      unidad_medida: it.unidad_medida ?? 'unidad',
-      precio_unitario: Number(it.precio_unitario) || 0,
-      bonificacion: Number(it.bonificacion) || 0,
-      alicuota_iva: Number(it.alicuota_iva) || 0,
-    }))
+    return items.map(it => {
+      const cantidad = Number(it.cantidad) || 1
+      const alicuota = Number(it.alicuota_iva) || 0
+      const total = Number(it.total) || 0
+      const subtotal = Number(it.subtotal) || 0
+      const precioUnitario = total > 0
+        ? round2(total / cantidad / (1 + alicuota / 100))
+        : subtotal > 0
+          ? round2(subtotal / cantidad)
+          : Number(it.precio_unitario) || 0
+
+      return {
+        producto_id: it.producto_id ?? null,
+        codigo: it.codigo ?? null,
+        descripcion: it.descripcion,
+        cantidad,
+        unidad_medida: it.unidad_medida ?? 'unidad',
+        precio_unitario: precioUnitario,
+        bonificacion: Number(it.bonificacion) || 0,
+        alicuota_iva: alicuota,
+      }
+    })
   }
-  // Si no hay items detallados, generamos uno con el total
+  // Si no hay items detallados no sabemos la alicuota original.
+  // Importamos el total como precio final para no restarle IVA al traerlo.
   const monto = Number(pedido.monto_total_usd ?? pedido.monto_total) || 0
-  const alicuotaFallback = 21
   return [{
     producto_id: null,
     codigo: pedido.numero,
     descripcion: pedido.descripcion?.trim() || `Importado de ${pedido.numero}`,
     cantidad: 1,
     unidad_medida: 'unidad',
-    precio_unitario: Math.round((monto / (1 + alicuotaFallback / 100)) * 100) / 100,
+    precio_unitario: round2(monto),
     bonificacion: 0,
-    alicuota_iva: alicuotaFallback,
+    alicuota_iva: 0,
   }]
 }
 
