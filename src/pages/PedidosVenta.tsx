@@ -7,7 +7,7 @@ import {
   eliminarPedidoVenta,
   usePedidoVentaDetalle,
 } from '@/hooks/usePedidos'
-import { useClientes } from '@/hooks/useCatalogo'
+import { useClientes, useProductos } from '@/hooks/useCatalogo'
 import { useCotizacionUSD } from '@/hooks/useCotizacionUSD'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
@@ -23,7 +23,9 @@ import {
   venceProximamente,
 } from '@/lib/vinculos'
 import { toast } from 'sonner'
-import type { EstadoPedidoVenta, PedidoVenta } from '@/db/schema'
+import type { EstadoPedidoVenta, PedidoItem, PedidoVenta } from '@/db/schema'
+
+const ALICUOTAS_IVA = [0, 2.5, 5, 10.5, 21, 27]
 
 // ─── Tipos locales ────────────────────────────────────────────────────────────
 
@@ -40,7 +42,10 @@ interface FormState {
   cliente: string  // texto fallback
   fecha: string
   fecha_vencimiento: string
-  monto_total_usd: string
+  producto_id: string
+  cantidad: string
+  precio_unitario_usd: string
+  alicuota_iva: string
   tipo_cambio: string
   descripcion: string
   notas: string
@@ -52,10 +57,17 @@ const INITIAL_FORM: FormState = {
   cliente: '',
   fecha: new Date().toISOString().split('T')[0],
   fecha_vencimiento: '',
-  monto_total_usd: '',
+  producto_id: '',
+  cantidad: '1',
+  precio_unitario_usd: '',
+  alicuota_iva: '21',
   tipo_cambio: '',
   descripcion: '',
   notas: '',
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100
 }
 
 // ─── Sub-componente: fila expandible ─────────────────────────────────────────
@@ -127,7 +139,9 @@ interface ModalProps {
 
 function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
   const clientesData = useClientes({ soloActivos: true })
+  const productosData = useProductos({ soloActivos: true })
   const clientes = useMemo(() => clientesData ?? [], [clientesData])
+  const productos = useMemo(() => productosData ?? [], [productosData])
   const cotizacion = useCotizacionUSD()
   const cotizacionGlobal = cotizacion?.cotizacion ?? 0
 
@@ -140,20 +154,22 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
     setErrors({})
     if (pedido) {
       const tcPedido = pedido.tipo_cambio
+      const item = pedido.items?.[0]
+      const ivaFallback = 21
+      const totalUsd = Number(pedido.monto_total_usd ?? 0)
+      const precioFallback = totalUsd > 0 ? round2(totalUsd / (1 + ivaFallback / 100)) : 0
       setForm({
         numero: pedido.numero,
         cliente_id: pedido.cliente_id ?? '',
         cliente: pedido.cliente ?? '',
         fecha: pedido.fecha,
         fecha_vencimiento: pedido.fecha_vencimiento ?? '',
-        monto_total_usd:
-          pedido.monto_total_usd != null
-            ? String(pedido.monto_total_usd)
-            : tcPedido && tcPedido > 0
-              ? (Number(pedido.monto_total) / Number(tcPedido)).toFixed(2)
-              : '',
+        producto_id: item?.producto_id ?? '',
+        cantidad: String(item?.cantidad ?? 1),
+        precio_unitario_usd: String(item?.precio_unitario ?? (precioFallback || '')),
+        alicuota_iva: String(item?.alicuota_iva ?? ivaFallback),
         tipo_cambio: tcPedido != null ? String(tcPedido) : String(cotizacionGlobal || ''),
-        descripcion: pedido.descripcion ?? '',
+        descripcion: item?.descripcion ?? pedido.descripcion ?? '',
         notas: pedido.notas ?? '',
       })
     } else {
@@ -180,11 +196,31 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
     setErrors(e => ({ ...e, cliente_id: undefined }))
   }
 
-  const usdNum = Number(form.monto_total_usd.replace(',', '.'))
+  function pickProducto(id: string) {
+    const producto = productos.find(p => p.id === id)
+    setForm(f => ({
+      ...f,
+      producto_id: id,
+      descripcion: producto ? producto.nombre : f.descripcion,
+      precio_unitario_usd: producto ? String(producto.precio_neto) : f.precio_unitario_usd,
+      alicuota_iva: producto ? String(producto.alicuota_iva) : f.alicuota_iva,
+    }))
+    setErrors(e => ({ ...e, producto_id: undefined, precio_unitario_usd: undefined, alicuota_iva: undefined }))
+  }
+
+  const cantidadNum = Number(form.cantidad.replace(',', '.'))
+  const precioUnitarioNum = Number(form.precio_unitario_usd.replace(',', '.'))
+  const ivaNum = Number(form.alicuota_iva)
   const tcNum = Number(form.tipo_cambio.replace(',', '.'))
+  const subtotalUsd =
+    Number.isFinite(cantidadNum) && cantidadNum > 0 && Number.isFinite(precioUnitarioNum) && precioUnitarioNum >= 0
+      ? round2(cantidadNum * precioUnitarioNum)
+      : 0
+  const ivaUsd = Number.isFinite(ivaNum) && ivaNum > 0 ? round2(subtotalUsd * ivaNum / 100) : 0
+  const totalUsd = round2(subtotalUsd + ivaUsd)
   const arsCalculado =
-    Number.isFinite(usdNum) && usdNum > 0 && Number.isFinite(tcNum) && tcNum > 0
-      ? usdNum * tcNum
+    totalUsd > 0 && Number.isFinite(tcNum) && tcNum > 0
+      ? round2(totalUsd * tcNum)
       : 0
 
   const validate = (): boolean => {
@@ -192,7 +228,10 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
     if (!form.numero.trim()) errs.numero = 'Requerido'
     if (!form.cliente_id && !form.cliente.trim()) errs.cliente_id = 'Seleccioná un cliente'
     if (!form.fecha) errs.fecha = 'Requerido'
-    if (!Number.isFinite(usdNum) || usdNum <= 0) errs.monto_total_usd = 'Monto USD inválido'
+    if (!Number.isFinite(cantidadNum) || cantidadNum <= 0) errs.cantidad = 'Cantidad invalida'
+    if (!Number.isFinite(precioUnitarioNum) || precioUnitarioNum < 0) errs.precio_unitario_usd = 'Precio invalido'
+    if (!Number.isFinite(ivaNum) || ivaNum < 0) errs.alicuota_iva = 'IVA invalido'
+    if (totalUsd <= 0) errs.precio_unitario_usd = 'El total debe ser mayor a cero'
     if (!Number.isFinite(tcNum) || tcNum <= 0) errs.tipo_cambio = 'Tipo de cambio inválido'
     setErrors(errs)
     return Object.keys(errs).length === 0
@@ -203,6 +242,20 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
     if (!validate()) return
     setLoading(true)
     try {
+      const producto = productos.find(p => p.id === form.producto_id)
+      const item: PedidoItem = {
+        producto_id: form.producto_id || null,
+        codigo: producto?.codigo ?? null,
+        descripcion: form.descripcion.trim() || producto?.nombre || `Orden ${form.numero.trim()}`,
+        cantidad: cantidadNum,
+        unidad_medida: producto?.unidad_medida ?? 'unidad',
+        precio_unitario: precioUnitarioNum,
+        bonificacion: 0,
+        alicuota_iva: ivaNum,
+        subtotal: subtotalUsd,
+        iva_importe: ivaUsd,
+        total: totalUsd,
+      }
       const data = {
         numero: form.numero.trim(),
         cliente: form.cliente.trim(),
@@ -211,9 +264,10 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
         fecha_vencimiento: form.fecha_vencimiento || null,
         estado: (pedido?.estado ?? 'pendiente') as EstadoPedidoVenta,
         monto_total: arsCalculado,
-        monto_total_usd: usdNum,
+        monto_total_usd: totalUsd,
         tipo_cambio: tcNum,
         descripcion: form.descripcion.trim() || null,
+        items: [item],
         notas: form.notas.trim() || null,
       }
       if (pedido) {
@@ -273,18 +327,51 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
           />
         </div>
         <div className="grid grid-cols-2 gap-4">
+          <Select
+            label="Producto / orden"
+            value={form.producto_id}
+            onChange={e => pickProducto(e.target.value)}
+          >
+            <option value="">Manual / sin producto</option>
+            {productos.map(p => (
+              <option key={p.id} value={p.id}>{p.nombre}</option>
+            ))}
+          </Select>
           <Input
-            label="Total USD (con IVA)"
+            label="Cantidad"
+            type="number"
+            min="0"
+            step="0.01"
+            value={form.cantidad}
+            onChange={e => set('cantidad', e.target.value)}
+            error={errors.cantidad}
+            required
+          />
+        </div>
+        <div className="grid grid-cols-3 gap-4">
+          <Input
+            label="Precio unitario USD (sin IVA)"
             type="number"
             min="0"
             step="0.01"
             placeholder="USD 0.00"
-            value={form.monto_total_usd}
-            onChange={e => set('monto_total_usd', e.target.value)}
-            error={errors.monto_total_usd}
-            hint={arsCalculado > 0 ? `≈ ${formatMoney(arsCalculado)} (con IVA)` : 'Monto total final, IVA incluido'}
+            value={form.precio_unitario_usd}
+            onChange={e => set('precio_unitario_usd', e.target.value)}
+            error={errors.precio_unitario_usd}
+            hint={`Total ${formatMoney(totalUsd, 'USD')} con IVA`}
             required
           />
+          <Select
+            label="IVA"
+            value={form.alicuota_iva}
+            onChange={e => set('alicuota_iva', e.target.value)}
+            error={errors.alicuota_iva}
+            required
+          >
+            {ALICUOTAS_IVA.map(a => (
+              <option key={a} value={a}>{a}%</option>
+            ))}
+          </Select>
           <Input
             label="Tipo de cambio"
             type="number"
@@ -307,6 +394,16 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
           value={form.descripcion}
           onChange={e => set('descripcion', e.target.value)}
         />
+        <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total calculado</p>
+          <p className="mt-1 font-semibold text-white">{formatMoney(totalUsd, 'USD')}</p>
+          <p className="text-xs text-muted-foreground">
+            Neto {formatMoney(subtotalUsd, 'USD')} + IVA {formatMoney(ivaUsd, 'USD')}
+          </p>
+          {arsCalculado > 0 && (
+            <p className="text-xs text-muted-foreground">ARS {formatMoney(arsCalculado)}</p>
+          )}
+        </div>
         <Textarea
           label="Notas internas (opcional)"
           placeholder="Observaciones, condiciones, etc."

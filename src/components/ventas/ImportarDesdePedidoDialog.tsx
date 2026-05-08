@@ -51,27 +51,28 @@ function itemsDesdePedido(pedido: Pedido): ItemDraft[] {
   const items = pedido.items ?? []
   if (items.length > 0) {
     return items.map(it => ({
-      producto_id: null,
-      codigo: null,
+      producto_id: it.producto_id ?? null,
+      codigo: it.codigo ?? null,
       descripcion: it.descripcion,
       cantidad: Number(it.cantidad) || 1,
-      unidad_medida: 'unidad',
+      unidad_medida: it.unidad_medida ?? 'unidad',
       precio_unitario: Number(it.precio_unitario) || 0,
-      bonificacion: 0,
-      alicuota_iva: 21,
+      bonificacion: Number(it.bonificacion) || 0,
+      alicuota_iva: Number(it.alicuota_iva) || 0,
     }))
   }
   // Si no hay items detallados, generamos uno con el total
   const monto = Number(pedido.monto_total_usd ?? pedido.monto_total) || 0
+  const alicuotaFallback = 21
   return [{
     producto_id: null,
     codigo: pedido.numero,
     descripcion: pedido.descripcion?.trim() || `Importado de ${pedido.numero}`,
     cantidad: 1,
     unidad_medida: 'unidad',
-    precio_unitario: monto,
+    precio_unitario: Math.round((monto / (1 + alicuotaFallback / 100)) * 100) / 100,
     bonificacion: 0,
-    alicuota_iva: 21,
+    alicuota_iva: alicuotaFallback,
   }]
 }
 

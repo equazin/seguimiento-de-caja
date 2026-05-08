@@ -58,9 +58,17 @@ export type EstadoPedidoCompra = 'pendiente' | 'pagado_parcial' | 'pagado_total'
 export type EstadoPedidoVenta = 'pendiente' | 'cobrado_parcial' | 'cobrado_total' | 'cancelado'
 
 export type PedidoItem = {
+  producto_id?: string | null
+  codigo?: string | null
   descripcion: string
   cantidad: number
+  unidad_medida?: string | null
   precio_unitario: number
+  bonificacion?: number | null
+  alicuota_iva?: number | null
+  subtotal?: number | null
+  iva_importe?: number | null
+  total?: number | null
 }
 
 export type PedidoCompra = {
