@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react'
-import { Plus, AlertTriangle, Clock, ChevronDown, ChevronRight, Trash2, Edit2, X, ShoppingCart } from 'lucide-react'
+import { Plus, AlertTriangle, Clock, ChevronDown, ChevronRight, Trash2, Edit2, X, ShoppingCart, FileText } from 'lucide-react'
 import {
   usePedidosVenta,
   usePedidosCompra,
@@ -16,6 +16,7 @@ import { Dialog, ConfirmDialog } from '@/components/ui/Dialog'
 import { SkeletonTable } from '@/components/ui/Skeleton'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { RowActionsMenu } from '@/components/ui/RowActionsMenu'
+import { ImportarDesdeDocumentoDialog } from '@/components/ventas/ImportarDesdeDocumentoDialog'
 import { formatMoney, formatDate } from '@/lib/formatters'
 import {
   ESTADO_VENTA_CONFIG,
@@ -24,7 +25,8 @@ import {
   venceProximamente,
 } from '@/lib/vinculos'
 import { toast } from 'sonner'
-import type { EstadoPedidoVenta, PedidoItem, PedidoVenta } from '@/db/schema'
+import type { Documento, EstadoPedidoVenta, PedidoItem, PedidoVenta } from '@/db/schema'
+import type { ItemDraft } from '@/lib/documentos'
 
 const ALICUOTAS_IVA = [0, 2.5, 5, 10.5, 21, 27]
 
@@ -51,6 +53,7 @@ interface FormState {
   tipo_cambio: string
   descripcion: string
   notas: string
+  items_importados: PedidoItem[] | null
 }
 
 const INITIAL_FORM: FormState = {
@@ -67,10 +70,37 @@ const INITIAL_FORM: FormState = {
   tipo_cambio: '',
   descripcion: '',
   notas: '',
+  items_importados: null,
 }
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100
+}
+
+function itemDraftToPedidoItem(item: ItemDraft, tipoCambio: number, moneda: 'ARS' | 'USD'): PedidoItem {
+  const tc = tipoCambio > 0 ? tipoCambio : 1
+  const cantidad = Number(item.cantidad) || 1
+  const precioUnitario = moneda === 'USD'
+    ? Number(item.precio_unitario) || 0
+    : round2((Number(item.precio_unitario) || 0) / tc)
+  const bonificacion = Math.max(0, Math.min(100, Number(item.bonificacion) || 0))
+  const subtotal = round2(cantidad * precioUnitario * (1 - bonificacion / 100))
+  const alicuotaIva = Number(item.alicuota_iva) || 0
+  const ivaImporte = round2(subtotal * alicuotaIva / 100)
+
+  return {
+    producto_id: item.producto_id,
+    codigo: item.codigo,
+    descripcion: item.descripcion,
+    cantidad,
+    unidad_medida: item.unidad_medida,
+    precio_unitario: precioUnitario,
+    bonificacion,
+    alicuota_iva: alicuotaIva,
+    subtotal,
+    iva_importe: ivaImporte,
+    total: round2(subtotal + ivaImporte),
+  }
 }
 
 // ─── Sub-componente: fila expandible ─────────────────────────────────────────
@@ -156,6 +186,7 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
   const [form, setForm] = useState<FormState>(INITIAL_FORM)
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({})
   const [loading, setLoading] = useState(false)
+  const [importPresupuestoOpen, setImportPresupuestoOpen] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -180,6 +211,7 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
         tipo_cambio: tcPedido != null ? String(tcPedido) : String(cotizacionGlobal || ''),
         descripcion: item?.descripcion ?? pedido.descripcion ?? '',
         notas: pedido.notas ?? '',
+        items_importados: null,
       })
     } else {
       setForm({
@@ -211,6 +243,7 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
       ...f,
       producto_id: id,
       pedido_compra_origen_id: '',
+      items_importados: null,
       descripcion: producto ? producto.nombre : f.descripcion,
       precio_unitario_usd: producto ? String(producto.precio_neto) : f.precio_unitario_usd,
       alicuota_iva: producto ? String(producto.alicuota_iva) : f.alicuota_iva,
@@ -238,6 +271,7 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
     setForm(f => ({
       ...f,
       pedido_compra_origen_id: id,
+      items_importados: null,
       producto_id: item?.producto_id ?? '',
       cantidad: String(cantidad > 0 ? cantidad : 1),
       precio_unitario_usd: precioUnitario > 0 ? String(precioUnitario) : '',
@@ -258,16 +292,71 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
     }))
   }
 
+  function importarPresupuesto(documento: Documento, items: ItemDraft[], contactoId: string | null) {
+    const tcDocumento = Number(documento.tipo_cambio) > 0 ? Number(documento.tipo_cambio) : cotizacionGlobal || 1
+    const itemsPedido = items.map(item => itemDraftToPedidoItem(item, tcDocumento, documento.moneda))
+    const primerItem = itemsPedido[0]
+    const cliente = contactoId ? clientes.find(c => c.id === contactoId) : null
+    const descripcion = itemsPedido.length > 1
+      ? `Presupuesto ${documento.numero_interno} (${itemsPedido.length} items)`
+      : primerItem?.descripcion ?? `Presupuesto ${documento.numero_interno}`
+
+    setForm(f => ({
+      ...f,
+      cliente_id: contactoId ?? f.cliente_id,
+      cliente: cliente?.razon_social ?? f.cliente,
+      fecha_vencimiento: documento.fecha_vencimiento ?? f.fecha_vencimiento,
+      producto_id: primerItem?.producto_id ?? '',
+      pedido_compra_origen_id: '',
+      cantidad: String(primerItem?.cantidad ?? 1),
+      precio_unitario_usd: primerItem ? String(primerItem.precio_unitario) : '',
+      alicuota_iva: String(primerItem?.alicuota_iva ?? 0),
+      tipo_cambio: String(tcDocumento),
+      descripcion,
+      notas: f.notas.trim()
+        ? f.notas
+        : `Importado desde presupuesto ${documento.numero_interno}`,
+      items_importados: itemsPedido.length > 0 ? itemsPedido : null,
+    }))
+    setErrors(e => ({
+      ...e,
+      cliente_id: undefined,
+      producto_id: undefined,
+      cantidad: undefined,
+      precio_unitario_usd: undefined,
+      alicuota_iva: undefined,
+      tipo_cambio: undefined,
+    }))
+  }
+
+  function quitarPresupuestoImportado() {
+    setForm(f => ({
+      ...f,
+      items_importados: null,
+      notas: f.notas.startsWith('Importado desde presupuesto ') ? '' : f.notas,
+    }))
+  }
+
   const cantidadNum = Number(form.cantidad.replace(',', '.'))
   const precioUnitarioNum = Number(form.precio_unitario_usd.replace(',', '.'))
   const ivaNum = Number(form.alicuota_iva)
   const tcNum = Number(form.tipo_cambio.replace(',', '.'))
-  const subtotalUsd =
+  const itemsImportados = form.items_importados ?? []
+  const hayItemsImportados = itemsImportados.length > 0
+  const subtotalManualUsd =
     Number.isFinite(cantidadNum) && cantidadNum > 0 && Number.isFinite(precioUnitarioNum) && precioUnitarioNum >= 0
       ? round2(cantidadNum * precioUnitarioNum)
       : 0
-  const ivaUsd = Number.isFinite(ivaNum) && ivaNum > 0 ? round2(subtotalUsd * ivaNum / 100) : 0
-  const totalUsd = round2(subtotalUsd + ivaUsd)
+  const ivaManualUsd = Number.isFinite(ivaNum) && ivaNum > 0 ? round2(subtotalManualUsd * ivaNum / 100) : 0
+  const subtotalUsd = hayItemsImportados
+    ? round2(itemsImportados.reduce((acc, item) => acc + Number(item.subtotal ?? 0), 0))
+    : subtotalManualUsd
+  const ivaUsd = hayItemsImportados
+    ? round2(itemsImportados.reduce((acc, item) => acc + Number(item.iva_importe ?? 0), 0))
+    : ivaManualUsd
+  const totalUsd = hayItemsImportados
+    ? round2(itemsImportados.reduce((acc, item) => acc + Number(item.total ?? 0), 0))
+    : round2(subtotalManualUsd + ivaManualUsd)
   const arsCalculado =
     totalUsd > 0 && Number.isFinite(tcNum) && tcNum > 0
       ? round2(totalUsd * tcNum)
@@ -278,9 +367,9 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
     if (!form.numero.trim()) errs.numero = 'Requerido'
     if (!form.cliente_id && !form.cliente.trim()) errs.cliente_id = 'Seleccioná un cliente'
     if (!form.fecha) errs.fecha = 'Requerido'
-    if (!Number.isFinite(cantidadNum) || cantidadNum <= 0) errs.cantidad = 'Cantidad invalida'
-    if (!Number.isFinite(precioUnitarioNum) || precioUnitarioNum < 0) errs.precio_unitario_usd = 'Precio invalido'
-    if (!Number.isFinite(ivaNum) || ivaNum < 0) errs.alicuota_iva = 'IVA invalido'
+    if (!hayItemsImportados && (!Number.isFinite(cantidadNum) || cantidadNum <= 0)) errs.cantidad = 'Cantidad invalida'
+    if (!hayItemsImportados && (!Number.isFinite(precioUnitarioNum) || precioUnitarioNum < 0)) errs.precio_unitario_usd = 'Precio invalido'
+    if (!hayItemsImportados && (!Number.isFinite(ivaNum) || ivaNum < 0)) errs.alicuota_iva = 'IVA invalido'
     if (totalUsd <= 0) errs.precio_unitario_usd = 'El total debe ser mayor a cero'
     if (!Number.isFinite(tcNum) || tcNum <= 0) errs.tipo_cambio = 'Tipo de cambio inválido'
     setErrors(errs)
@@ -293,7 +382,7 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
     setLoading(true)
     try {
       const producto = productos.find(p => p.id === form.producto_id)
-      const item: PedidoItem = {
+      const itemManual: PedidoItem = {
         producto_id: form.producto_id || null,
         codigo: producto?.codigo ?? null,
         descripcion: form.descripcion.trim() || producto?.nombre || `Orden ${form.numero.trim()}`,
@@ -306,6 +395,7 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
         iva_importe: ivaUsd,
         total: totalUsd,
       }
+      const items = hayItemsImportados ? itemsImportados : [itemManual]
       const data = {
         numero: form.numero.trim(),
         cliente: form.cliente.trim(),
@@ -317,7 +407,7 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
         monto_total_usd: totalUsd,
         tipo_cambio: tcNum,
         descripcion: form.descripcion.trim() || null,
-        items: [item],
+        items,
         notas: form.notas.trim() || null,
       }
       if (pedido) {
@@ -336,6 +426,7 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
   }
 
   return (
+    <>
     <Dialog open={open} onClose={onClose} title={pedido ? 'Editar pedido de venta' : 'Nuevo pedido de venta'} size="lg">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
@@ -376,11 +467,12 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
             onChange={e => set('fecha_vencimiento', e.target.value)}
           />
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           <Select
             label="Producto / orden"
             value={form.producto_id}
             onChange={e => pickProducto(e.target.value)}
+            disabled={hayItemsImportados}
           >
             <option value="">Manual / sin producto</option>
             {productos.map(p => (
@@ -391,6 +483,7 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
             label="Importar orden de compra"
             value={form.pedido_compra_origen_id}
             onChange={e => importarPedidoCompra(e.target.value)}
+            disabled={hayItemsImportados}
           >
             <option value="">No importar</option>
             {pedidosCompra.map(p => (
@@ -399,7 +492,35 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
               </option>
             ))}
           </Select>
+          <div className="flex items-end">
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full justify-center"
+              onClick={() => setImportPresupuestoOpen(true)}
+            >
+              <FileText size={16} />
+              Importar presupuesto
+            </Button>
+          </div>
         </div>
+        {hayItemsImportados && (
+          <div className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-medium text-white">
+                  Presupuesto importado con {itemsImportados.length} item{itemsImportados.length !== 1 ? 's' : ''}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Se guardan las líneas originales del presupuesto en el pedido.
+                </p>
+              </div>
+              <Button type="button" variant="ghost" size="sm" onClick={quitarPresupuestoImportado}>
+                Quitar
+              </Button>
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-4">
           <Input
             label="Cantidad"
@@ -409,6 +530,7 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
             value={form.cantidad}
             onChange={e => set('cantidad', e.target.value)}
             error={errors.cantidad}
+            disabled={hayItemsImportados}
             required
           />
         </div>
@@ -423,6 +545,7 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
             onChange={e => set('precio_unitario_usd', e.target.value)}
             error={errors.precio_unitario_usd}
             hint={`Total ${formatMoney(totalUsd, 'USD')} con IVA`}
+            disabled={hayItemsImportados}
             required
           />
           <Select
@@ -430,6 +553,7 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
             value={form.alicuota_iva}
             onChange={e => set('alicuota_iva', e.target.value)}
             error={errors.alicuota_iva}
+            disabled={hayItemsImportados}
             required
           >
             {ALICUOTAS_IVA.map(a => (
@@ -480,6 +604,16 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
         </div>
       </form>
     </Dialog>
+    <ImportarDesdeDocumentoDialog
+      open={importPresupuestoOpen}
+      tipoOperacion="venta"
+      tipoDestino="pedido"
+      tipoOrigen="presupuesto"
+      contactoId={form.cliente_id || null}
+      onClose={() => setImportPresupuestoOpen(false)}
+      onImport={importarPresupuesto}
+    />
+    </>
   )
 }
 
