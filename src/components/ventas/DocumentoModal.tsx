@@ -14,10 +14,10 @@ import {
   useDocumentoItems,
 } from '@/hooks/useDocumentos'
 import { useMovimiento } from '@/hooks/useMovimientos'
-import { calcularTotales, type ItemDraft } from '@/lib/documentos'
+import { calcularTotales, tipoDocumentoLabel, type ItemDraft } from '@/lib/documentos'
 import { METODOS_PAGO } from '@/lib/constants'
 import { cn, formatDateTime, formatMoney, todayStr } from '@/lib/formatters'
-import { ImportarDesdePedidoDialog } from '@/components/ventas/ImportarDesdePedidoDialog'
+import { ImportarDesdeDocumentoDialog } from '@/components/ventas/ImportarDesdeDocumentoDialog'
 import type {
   Documento,
   TipoDocumentoComercial,
@@ -42,6 +42,12 @@ const TIPOS_DOCUMENTO: { value: TipoDocumentoForm; label: string }[] = [
 
 const TIPOS_CON_CAJA = new Set<TipoDocumentoForm>(['factura', 'nota_credito', 'nota_debito'])
 const TIPOS_DOCUMENTO_BASE = TIPOS_DOCUMENTO.filter(t => !['nota_credito', 'nota_debito'].includes(t.value))
+
+const TIPO_ORIGEN_IMPORT: Partial<Record<TipoDocumentoForm, TipoDocumentoComercial>> = {
+  pedido: 'presupuesto',
+  factura: 'pedido',
+  remito: 'factura',
+}
 
 interface DocumentoModalProps {
   open: boolean
@@ -277,7 +283,8 @@ export function DocumentoEditorPanel({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [cotizacionUsdUpdatedAt, setCotizacionUsdUpdatedAt] = useState<string | null>(null)
-  const [importPedidoOpen, setImportPedidoOpen] = useState(false)
+  const [importDocumentoOpen, setImportDocumentoOpen] = useState(false)
+  const [documentoOrigenId, setDocumentoOrigenId] = useState<string | null>(null)
 
   useEffect(() => {
     Promise.all([
@@ -312,6 +319,7 @@ export function DocumentoEditorPanel({
       setForm(emptyForm())
     }
     setError(null)
+    setDocumentoOrigenId(null)
   }, [documento?.id, tipoOperacion])
 
   useEffect(() => {
@@ -373,6 +381,7 @@ export function DocumentoEditorPanel({
     }
     return TIPOS_DOCUMENTO_BASE
   }, [documento?.tipo_documento])
+  const tipoOrigenImport = TIPO_ORIGEN_IMPORT[form.tipo_documento] ?? null
 
   const tipoCambioNum = Number(form.tipo_cambio.replace(',', '.'))
   const tipoCambioVigente = Number.isFinite(tipoCambioNum) && tipoCambioNum > 0 ? tipoCambioNum : 1
@@ -387,6 +396,11 @@ export function DocumentoEditorPanel({
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm(prev => ({ ...prev, [key]: value }))
+  }
+
+  function cambiarTipoDocumento(tipoDocumento: TipoDocumentoForm) {
+    setDocumentoOrigenId(null)
+    setForm(prev => ({ ...prev, tipo_documento: tipoDocumento }))
   }
 
   function cambiarMoneda(nuevaMoneda: 'ARS' | 'USD') {
@@ -445,12 +459,16 @@ export function DocumentoEditorPanel({
     setForm(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== idx) }))
   }
 
-  function handleImportFromPedido(itemsImportados: ItemDraft[], contactoId: string | null) {
+  function handleImportFromDocumento(documentoImportado: Documento, itemsImportados: ItemDraft[], contactoId: string | null) {
     setForm(prev => ({
       ...prev,
       contacto_id: prev.contacto_id || (contactoId ?? prev.contacto_id),
-      items: [...prev.items, ...itemsImportados],
+      moneda: documentoImportado.moneda,
+      tipo_cambio: String(documentoImportado.tipo_cambio),
+      fecha_vencimiento: prev.fecha_vencimiento || (documentoImportado.fecha_vencimiento ?? ''),
+      items: itemsImportados,
     }))
+    setDocumentoOrigenId(documentoImportado.id)
   }
 
   async function submitDocumento(estadoFinal: EstadoDocumento) {
@@ -514,6 +532,7 @@ export function DocumentoEditorPanel({
         metodoPago: form.metodo_pago,
         estado: estadoFinal,
         items: form.items,
+        origenDocumentoId: documentoOrigenId,
       }
       if (documento) {
         await actualizarDocumento({ id: documento.id, ...payload })
@@ -597,7 +616,7 @@ export function DocumentoEditorPanel({
             <Select
               label="Tipo"
               value={form.tipo_documento}
-              onChange={e => update('tipo_documento', e.target.value as TipoDocumentoForm)}
+              onChange={e => cambiarTipoDocumento(e.target.value as TipoDocumentoForm)}
               disabled={!!documento}
             >
               {tiposDocumentoDisponibles.map(t => (
@@ -701,16 +720,18 @@ export function DocumentoEditorPanel({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-semibold text-white">Items</h3>
             <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => setImportPedidoOpen(true)}
-                disabled={!editable}
-              >
-                <ClipboardList size={14} />
-                Importar de orden
-              </Button>
+              {tipoOrigenImport && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setImportDocumentoOpen(true)}
+                  disabled={!editable}
+                >
+                  <ClipboardList size={14} />
+                  Importar {tipoDocumentoLabel(tipoOrigenImport).toLowerCase()}
+                </Button>
+              )}
               <Button
                 type="button"
                 variant="secondary"
@@ -917,13 +938,17 @@ export function DocumentoEditorPanel({
           </Button>
         </div>
       </form>
-      <ImportarDesdePedidoDialog
-        open={importPedidoOpen}
-        tipoOperacion={tipoOperacion}
-        contactoId={form.contacto_id || null}
-        onClose={() => setImportPedidoOpen(false)}
-        onImport={(_pedido, items, contactoId) => handleImportFromPedido(items, contactoId)}
-      />
+      {tipoOrigenImport && (
+        <ImportarDesdeDocumentoDialog
+          open={importDocumentoOpen}
+          tipoOperacion={tipoOperacion}
+          tipoDestino={form.tipo_documento as TipoDocumentoComercial}
+          tipoOrigen={tipoOrigenImport}
+          contactoId={form.contacto_id || null}
+          onClose={() => setImportDocumentoOpen(false)}
+          onImport={handleImportFromDocumento}
+        />
+      )}
     </>
   )
 }

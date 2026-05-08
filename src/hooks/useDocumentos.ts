@@ -181,6 +181,7 @@ interface CrearDocumentoInput {
   metodoPago: MetodoPago
   estado: EstadoDocumento
   items: ItemDraft[]
+  origenDocumentoId?: string | null
 }
 
 export async function crearDocumento(input: CrearDocumentoInput): Promise<Documento> {
@@ -243,6 +244,17 @@ export async function crearDocumento(input: CrearDocumentoInput): Promise<Docume
     if (itemsError) throw itemsError
   }
 
+  if (input.origenDocumentoId) {
+    const { error: relacionError } = await supabaseAfip
+      .from('documento_relaciones')
+      .insert({
+        origen_id: input.origenDocumentoId,
+        destino_id: documento.id,
+        tipo_relacion: 'origen',
+      })
+    if (relacionError) throw relacionError
+  }
+
   await syncStockDocumento(documento.id)
   await syncCajaDocumento(documento.id, input.metodoPago)
   notifyDataChanged()
@@ -262,6 +274,7 @@ interface ActualizarDocumentoInput {
   metodoPago: MetodoPago
   estado: EstadoDocumento
   items: ItemDraft[]
+  origenDocumentoId?: string | null
 }
 
 export async function actualizarDocumento(input: ActualizarDocumentoInput): Promise<void> {
@@ -379,8 +392,8 @@ export function siguienteTipoConvertible(
   tipoDocumento: TipoDocumentoComercial
 ): TipoDocumentoComercial | null {
   if (tipoDocumento === 'presupuesto') return 'pedido'
-  if (tipoDocumento === 'pedido') return 'remito'
-  if (tipoDocumento === 'remito') return 'factura'
+  if (tipoDocumento === 'pedido') return 'factura'
+  if (tipoDocumento === 'factura') return 'remito'
   return null
 }
 
@@ -448,6 +461,12 @@ export async function convertirDocumento(id: string): Promise<Documento> {
       no_gravado: origen.no_gravado,
       percepciones: origen.percepciones,
       total: origen.total,
+      subtotal_usd: origen.subtotal_usd,
+      iva_total_usd: origen.iva_total_usd,
+      exento_usd: origen.exento_usd,
+      no_gravado_usd: origen.no_gravado_usd,
+      percepciones_usd: origen.percepciones_usd,
+      total_usd: origen.total_usd,
       observaciones,
       cuenta_id: null,
       movimiento_id: null,
@@ -471,6 +490,10 @@ export async function convertirDocumento(id: string): Promise<Documento> {
     iva_importe: it.iva_importe,
     subtotal: it.subtotal,
     total: it.total,
+    precio_unitario_usd: it.precio_unitario_usd,
+    iva_importe_usd: it.iva_importe_usd,
+    subtotal_usd: it.subtotal_usd,
+    total_usd: it.total_usd,
   }))
   const { error: insertItemsError } = await supabaseAfip
     .from('documento_items')
