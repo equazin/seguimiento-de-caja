@@ -242,7 +242,7 @@ function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
         </div>
         <div className="grid grid-cols-2 gap-4">
           <Input
-            label="Monto USD"
+            label="Total USD (con IVA)"
             type="number"
             min="0"
             step="0.01"
@@ -250,7 +250,7 @@ function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
             value={form.monto_total_usd}
             onChange={e => set('monto_total_usd', e.target.value)}
             error={errors.monto_total_usd}
-            hint={arsCalculado > 0 ? `≈ ${formatMoney(arsCalculado)}` : undefined}
+            hint={arsCalculado > 0 ? `≈ ${formatMoney(arsCalculado)} (con IVA)` : 'Monto total final, IVA incluido'}
             required
           />
           <Input
