@@ -103,6 +103,22 @@ function itemDraftToPedidoItem(item: ItemDraft, tipoCambio: number, moneda: 'ARS
   }
 }
 
+function normalizarItemsPedido(items: PedidoItem[] | null | undefined): PedidoItem[] {
+  return (items ?? []).map(item => ({
+    ...item,
+    producto_id: item.producto_id ?? null,
+    codigo: item.codigo ?? null,
+    unidad_medida: item.unidad_medida ?? 'unidad',
+    cantidad: Number(item.cantidad) || 1,
+    precio_unitario: Number(item.precio_unitario) || 0,
+    bonificacion: Number(item.bonificacion) || 0,
+    alicuota_iva: Number(item.alicuota_iva) || 0,
+    subtotal: Number(item.subtotal) || 0,
+    iva_importe: Number(item.iva_importe) || 0,
+    total: Number(item.total) || 0,
+  }))
+}
+
 // ─── Sub-componente: fila expandible ─────────────────────────────────────────
 
 function FilaDetalle({ id }: { id: string }) {
@@ -193,10 +209,12 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
     setErrors({})
     if (pedido) {
       const tcPedido = pedido.tipo_cambio
-      const item = pedido.items?.[0]
+      const itemsPedido = normalizarItemsPedido(pedido.items)
+      const item = itemsPedido[0]
       const ivaFallback = 0
       const totalUsd = Number(pedido.monto_total_usd ?? 0)
       const precioFallback = totalUsd > 0 ? totalUsd : 0
+      const requierePreservarItems = itemsPedido.length > 1 || itemsPedido.some(it => Number(it.bonificacion ?? 0) > 0)
       setForm({
         numero: pedido.numero,
         cliente_id: pedido.cliente_id ?? '',
@@ -211,7 +229,7 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
         tipo_cambio: tcPedido != null ? String(tcPedido) : String(cotizacionGlobal || ''),
         descripcion: item?.descripcion ?? pedido.descripcion ?? '',
         notas: pedido.notas ?? '',
-        items_importados: null,
+        items_importados: requierePreservarItems ? itemsPedido : null,
       })
     } else {
       setForm({
@@ -513,7 +531,7 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="font-medium text-white">
-                  Presupuesto importado con {itemsImportados.length} item{itemsImportados.length !== 1 ? 's' : ''}
+                  Pedido con {itemsImportados.length} item{itemsImportados.length !== 1 ? 's' : ''}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Se guardan las líneas originales del presupuesto en el pedido.
@@ -760,7 +778,11 @@ export function PedidosVenta() {
 
                 return (
                   <React.Fragment key={p.id}>
-                    <tr className="hover:bg-surface-2/30 transition-colors">
+                    <tr
+                      className="cursor-pointer hover:bg-surface-2/30 transition-colors"
+                      onDoubleClick={() => handleEdit(p)}
+                      title="Doble click para editar"
+                    >
                       <td className="pl-3">
                         <button
                           type="button"
@@ -771,7 +793,14 @@ export function PedidosVenta() {
                         </button>
                       </td>
                       <td className="px-4 py-3">
-                        <span className="font-mono text-sm text-white">{p.numero}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleEdit(p)}
+                          className="font-mono text-sm text-white underline-offset-4 hover:text-primary hover:underline"
+                          title="Editar pedido"
+                        >
+                          {p.numero}
+                        </button>
                       </td>
                       <td className="px-4 py-3 text-sm text-white">{p.cliente}</td>
                       <td className="px-4 py-3 text-sm text-muted-foreground">{formatDate(p.fecha)}</td>
