@@ -184,12 +184,15 @@ export function useProductos(filtros?: ListFilters) {
   )
 }
 
-export async function crearProducto(empresaId: string, data: Partial<Producto>) {
-  const { error } = await supabaseAfip
+export async function crearProducto(empresaId: string, data: Partial<Producto>): Promise<Producto> {
+  const { data: created, error } = await supabaseAfip
     .from('productos')
     .insert({ ...data, empresa_id: empresaId })
+    .select('*')
+    .single()
   if (error) throw error
   notifyDataChanged()
+  return created as Producto
 }
 
 export async function importarProductos(empresaId: string, rows: ProductoImport[]) {

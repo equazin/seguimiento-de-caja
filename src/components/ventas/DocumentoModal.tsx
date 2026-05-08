@@ -6,7 +6,7 @@ import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { getConfiguracion } from '@/db/queries'
 import { useAuth } from '@/lib/auth'
-import { useClientes, useProductos, useProveedores } from '@/hooks/useCatalogo'
+import { crearProducto, useClientes, useProductos, useProveedores } from '@/hooks/useCatalogo'
 import { useCuentas } from '@/hooks/useCuentas'
 import {
   crearDocumento,
@@ -27,6 +27,7 @@ import type {
   Producto,
   Proveedor,
   TipoOperacion,
+  TipoProducto,
 } from '@/db/schema'
 
 type TipoDocumentoForm = 'presupuesto' | 'pedido' | 'remito' | 'factura' | 'nota_credito' | 'nota_debito'
@@ -48,6 +49,8 @@ const TIPO_ORIGEN_IMPORT: Partial<Record<TipoDocumentoForm, TipoDocumentoComerci
   factura: 'pedido',
   remito: 'factura',
 }
+const ALICUOTAS_IVA = [0, 2.5, 5, 10.5, 21, 27]
+const UNIDADES = ['unidad', 'kg', 'g', 'litro', 'ml', 'metro', 'cm', 'caja', 'hora', 'servicio']
 
 interface DocumentoModalProps {
   open: boolean
@@ -122,6 +125,53 @@ interface SearchableOption {
   value: string
   label: string
   description?: string | null
+}
+
+interface QuickProductForm {
+  codigo: string
+  nombre: string
+  tipo: TipoProducto
+  unidad_medida: string
+  precio_neto: string
+  alicuota_iva: string
+  stockeable: boolean
+  stock_actual: string
+  stock_minimo: string
+}
+
+function quickProductEmpty(nombre = '', precio = 0, alicuota = 21): QuickProductForm {
+  return {
+    codigo: '',
+    nombre,
+    tipo: 'producto',
+    unidad_medida: 'unidad',
+    precio_neto: precio > 0 ? String(precio) : '0',
+    alicuota_iva: String(alicuota),
+    stockeable: true,
+    stock_actual: '0',
+    stock_minimo: '0',
+  }
+}
+
+function quickProductPayload(form: QuickProductForm): Partial<Producto> {
+  const precio = Number(form.precio_neto.replace(',', '.'))
+  const alicuota = Number(form.alicuota_iva)
+  const stockActual = Number(form.stock_actual.replace(',', '.'))
+  const stockMinimo = Number(form.stock_minimo.replace(',', '.'))
+
+  return {
+    codigo: form.codigo.trim() || null,
+    nombre: form.nombre.trim(),
+    descripcion: null,
+    tipo: form.tipo,
+    unidad_medida: form.unidad_medida,
+    precio_neto: Number.isFinite(precio) ? precio : 0,
+    alicuota_iva: Number.isFinite(alicuota) ? alicuota : 21,
+    stockeable: form.stockeable,
+    stock_actual: form.stockeable && Number.isFinite(stockActual) ? stockActual : 0,
+    stock_minimo: form.stockeable && Number.isFinite(stockMinimo) ? stockMinimo : 0,
+    activo: true,
+  }
 }
 
 function SearchableSelect({
@@ -236,6 +286,145 @@ function SearchableSelect({
   )
 }
 
+function ProductoRapidoDialog({
+  open,
+  initial,
+  submitting,
+  error,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean
+  initial: QuickProductForm
+  submitting: boolean
+  error: string | null
+  onClose: () => void
+  onSubmit: (form: QuickProductForm) => void
+}) {
+  const [form, setForm] = useState<QuickProductForm>(initial)
+
+  useEffect(() => {
+    if (open) setForm(initial)
+  }, [open, initial])
+
+  function update<K extends keyof QuickProductForm>(key: K, value: QuickProductForm[K]) {
+    setForm(prev => ({ ...prev, [key]: value }))
+  }
+
+  return (
+    <Dialog open={open} onClose={onClose} title="Nuevo producto" size="lg">
+      <form
+        className="space-y-4"
+        onSubmit={event => {
+          event.preventDefault()
+          onSubmit(form)
+        }}
+      >
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Input
+            label="Nombre"
+            required
+            value={form.nombre}
+            onChange={e => update('nombre', e.target.value)}
+          />
+          <Input
+            label="Codigo"
+            value={form.codigo}
+            onChange={e => update('codigo', e.target.value)}
+          />
+          <Select
+            label="Tipo"
+            value={form.tipo}
+            onChange={e => {
+              const tipo = e.target.value as TipoProducto
+              setForm(prev => ({
+                ...prev,
+                tipo,
+                unidad_medida: tipo === 'servicio' ? 'servicio' : prev.unidad_medida,
+                stockeable: tipo === 'servicio' ? false : prev.stockeable,
+              }))
+            }}
+          >
+            <option value="producto">Producto</option>
+            <option value="servicio">Servicio</option>
+          </Select>
+          <Select
+            label="Unidad"
+            value={form.unidad_medida}
+            onChange={e => update('unidad_medida', e.target.value)}
+          >
+            {UNIDADES.map(unidad => (
+              <option key={unidad} value={unidad}>{unidad}</option>
+            ))}
+          </Select>
+          <Input
+            label="Precio neto"
+            type="number"
+            min="0"
+            step="0.01"
+            value={form.precio_neto}
+            onChange={e => update('precio_neto', e.target.value)}
+          />
+          <Select
+            label="IVA"
+            value={form.alicuota_iva}
+            onChange={e => update('alicuota_iva', e.target.value)}
+          >
+            {ALICUOTAS_IVA.map(alicuota => (
+              <option key={alicuota} value={alicuota}>{alicuota}%</option>
+            ))}
+          </Select>
+        </div>
+
+        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={form.stockeable}
+            onChange={e => update('stockeable', e.target.checked)}
+            disabled={form.tipo === 'servicio'}
+            className="h-4 w-4 rounded border-border bg-surface-2"
+          />
+          Maneja stock
+        </label>
+
+        {form.stockeable && (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Input
+              label="Stock actual"
+              type="number"
+              step="0.01"
+              value={form.stock_actual}
+              onChange={e => update('stock_actual', e.target.value)}
+            />
+            <Input
+              label="Stock minimo"
+              type="number"
+              step="0.01"
+              value={form.stock_minimo}
+              onChange={e => update('stock_minimo', e.target.value)}
+            />
+          </div>
+        )}
+
+        {error && (
+          <div className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
+            {error}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2 border-t border-border pt-2">
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={submitting}>
+            {submitting ? 'Guardando...' : 'Crear y usar'}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  )
+}
+
 export function DocumentoModal({
   open,
   onClose,
@@ -285,6 +474,10 @@ export function DocumentoEditorPanel({
   const [cotizacionUsdUpdatedAt, setCotizacionUsdUpdatedAt] = useState<string | null>(null)
   const [importDocumentoOpen, setImportDocumentoOpen] = useState(false)
   const [documentoOrigenId, setDocumentoOrigenId] = useState<string | null>(null)
+  const [productoRapidoIdx, setProductoRapidoIdx] = useState<number | null>(null)
+  const [productoRapidoInitial, setProductoRapidoInitial] = useState<QuickProductForm>(() => quickProductEmpty())
+  const [productoRapidoSubmitting, setProductoRapidoSubmitting] = useState(false)
+  const [productoRapidoError, setProductoRapidoError] = useState<string | null>(null)
 
   useEffect(() => {
     Promise.all([
@@ -453,6 +646,51 @@ export function DocumentoEditorPanel({
       base.alicuota_iva = producto.alicuota_iva
     }
     setForm(prev => ({ ...prev, items: [...prev.items, base] }))
+  }
+
+  function openProductoRapido(idx: number) {
+    const item = form.items[idx]
+    setProductoRapidoInitial(quickProductEmpty(
+      item?.descripcion?.trim() ?? '',
+      Number(item?.precio_unitario) || 0,
+      Number(item?.alicuota_iva) || 21
+    ))
+    setProductoRapidoIdx(idx)
+    setProductoRapidoError(null)
+  }
+
+  async function crearProductoRapido(formProducto: QuickProductForm) {
+    if (!empresa) {
+      setProductoRapidoError('No hay empresa configurada')
+      return
+    }
+    if (!formProducto.nombre.trim()) {
+      setProductoRapidoError('El nombre es obligatorio')
+      return
+    }
+    if (productoRapidoIdx == null) return
+
+    setProductoRapidoError(null)
+    setProductoRapidoSubmitting(true)
+    try {
+      const producto = await crearProducto(empresa.id, quickProductPayload(formProducto))
+      updateItem(productoRapidoIdx, {
+        producto_id: producto.id,
+        codigo: producto.codigo,
+        descripcion: producto.nombre,
+        unidad_medida: producto.unidad_medida,
+        precio_unitario: producto.precio_neto,
+        alicuota_iva: producto.alicuota_iva,
+      })
+      toast.success('Producto creado')
+      setProductoRapidoIdx(null)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'No se pudo crear el producto'
+      setProductoRapidoError(message)
+      toast.error(message)
+    } finally {
+      setProductoRapidoSubmitting(false)
+    }
   }
 
   function removeItem(idx: number) {
@@ -772,15 +1010,30 @@ export function DocumentoEditorPanel({
                     return (
                       <tr key={idx} className="border-t border-border align-top">
                         <td className="px-3 py-2">
-                          <SearchableSelect
-                            label="Producto"
-                            value={it.producto_id ?? ''}
-                            options={productoOptions}
-                            placeholder="Buscar producto..."
-                            emptyLabel="Manual"
-                            disabled={!editable}
-                            onChange={value => pickProducto(idx, value)}
-                          />
+                          <div className="flex items-end gap-2">
+                            <div className="min-w-0 flex-1">
+                              <SearchableSelect
+                                label="Producto"
+                                value={it.producto_id ?? ''}
+                                options={productoOptions}
+                                placeholder="Buscar producto..."
+                                emptyLabel="Manual"
+                                disabled={!editable}
+                                onChange={value => pickProducto(idx, value)}
+                              />
+                            </div>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => openProductoRapido(idx)}
+                              disabled={!editable}
+                              className="mb-0.5 shrink-0"
+                            >
+                              <Plus size={14} />
+                              Crear
+                            </Button>
+                          </div>
                           <input
                             value={it.descripcion}
                             onChange={e => updateItem(idx, { descripcion: e.target.value })}
@@ -949,6 +1202,14 @@ export function DocumentoEditorPanel({
           onImport={handleImportFromDocumento}
         />
       )}
+      <ProductoRapidoDialog
+        open={productoRapidoIdx != null}
+        initial={productoRapidoInitial}
+        submitting={productoRapidoSubmitting}
+        error={productoRapidoError}
+        onClose={() => setProductoRapidoIdx(null)}
+        onSubmit={crearProductoRapido}
+      />
     </>
   )
 }
