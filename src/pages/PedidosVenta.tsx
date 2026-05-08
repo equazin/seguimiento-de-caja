@@ -467,7 +467,22 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
             onChange={e => set('fecha_vencimiento', e.target.value)}
           />
         </div>
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface-2/70 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-medium text-white">Presupuesto existente</p>
+            <p className="text-xs text-muted-foreground">Traer cliente, items y totales desde un presupuesto.</p>
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            className="justify-center"
+            onClick={() => setImportPresupuestoOpen(true)}
+          >
+            <FileText size={16} />
+            Traer presupuesto
+          </Button>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
           <Select
             label="Producto / orden"
             value={form.producto_id}
@@ -492,17 +507,6 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
               </option>
             ))}
           </Select>
-          <div className="flex items-end">
-            <Button
-              type="button"
-              variant="secondary"
-              className="w-full justify-center"
-              onClick={() => setImportPresupuestoOpen(true)}
-            >
-              <FileText size={16} />
-              Importar presupuesto
-            </Button>
-          </div>
         </div>
         {hayItemsImportados && (
           <div className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm">
