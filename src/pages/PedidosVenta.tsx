@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react'
 import { Plus, AlertTriangle, Clock, ChevronDown, ChevronRight, Trash2, Edit2, X, ShoppingCart } from 'lucide-react'
 import {
   usePedidosVenta,
+  usePedidosCompra,
   crearPedidoVenta,
   actualizarPedidoVenta,
   eliminarPedidoVenta,
@@ -43,6 +44,7 @@ interface FormState {
   fecha: string
   fecha_vencimiento: string
   producto_id: string
+  pedido_compra_origen_id: string
   cantidad: string
   precio_unitario_usd: string
   alicuota_iva: string
@@ -58,6 +60,7 @@ const INITIAL_FORM: FormState = {
   fecha: new Date().toISOString().split('T')[0],
   fecha_vencimiento: '',
   producto_id: '',
+  pedido_compra_origen_id: '',
   cantidad: '1',
   precio_unitario_usd: '',
   alicuota_iva: '21',
@@ -140,8 +143,13 @@ interface ModalProps {
 function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
   const clientesData = useClientes({ soloActivos: true })
   const productosData = useProductos({ soloActivos: true })
+  const pedidosCompraData = usePedidosCompra()
   const clientes = useMemo(() => clientesData ?? [], [clientesData])
   const productos = useMemo(() => productosData ?? [], [productosData])
+  const pedidosCompra = useMemo(
+    () => (pedidosCompraData ?? []).filter(p => p.estado !== 'cancelado'),
+    [pedidosCompraData]
+  )
   const cotizacion = useCotizacionUSD()
   const cotizacionGlobal = cotizacion?.cotizacion ?? 0
 
@@ -165,6 +173,7 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
         fecha: pedido.fecha,
         fecha_vencimiento: pedido.fecha_vencimiento ?? '',
         producto_id: item?.producto_id ?? '',
+        pedido_compra_origen_id: '',
         cantidad: String(item?.cantidad ?? 1),
         precio_unitario_usd: String(item?.precio_unitario ?? (precioFallback || '')),
         alicuota_iva: String(item?.alicuota_iva ?? ivaFallback),
@@ -201,11 +210,52 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
     setForm(f => ({
       ...f,
       producto_id: id,
+      pedido_compra_origen_id: '',
       descripcion: producto ? producto.nombre : f.descripcion,
       precio_unitario_usd: producto ? String(producto.precio_neto) : f.precio_unitario_usd,
       alicuota_iva: producto ? String(producto.alicuota_iva) : f.alicuota_iva,
     }))
     setErrors(e => ({ ...e, producto_id: undefined, precio_unitario_usd: undefined, alicuota_iva: undefined }))
+  }
+
+  function importarPedidoCompra(id: string) {
+    if (!id) {
+      setForm(f => ({ ...f, pedido_compra_origen_id: '' }))
+      return
+    }
+    const pedidoCompra = pedidosCompra.find(p => p.id === id)
+    if (!pedidoCompra) return
+    const item = pedidoCompra.items?.[0]
+    const totalUsd = Number(pedidoCompra.monto_total_usd ?? 0)
+    const cantidad = Number(item?.cantidad ?? 1)
+    const precioUnitario = item?.precio_unitario != null
+      ? Number(item.precio_unitario)
+      : cantidad > 0 && totalUsd > 0
+        ? round2(totalUsd / cantidad)
+        : 0
+    const descripcion = item?.descripcion ?? pedidoCompra.descripcion ?? `Orden ${pedidoCompra.numero}`
+
+    setForm(f => ({
+      ...f,
+      pedido_compra_origen_id: id,
+      producto_id: item?.producto_id ?? '',
+      cantidad: String(cantidad > 0 ? cantidad : 1),
+      precio_unitario_usd: precioUnitario > 0 ? String(precioUnitario) : '',
+      alicuota_iva: String(item?.alicuota_iva ?? 0),
+      tipo_cambio: pedidoCompra.tipo_cambio != null ? String(pedidoCompra.tipo_cambio) : f.tipo_cambio,
+      descripcion,
+      notas: f.notas.trim()
+        ? f.notas
+        : `Importado desde orden de compra ${pedidoCompra.numero}`,
+    }))
+    setErrors(e => ({
+      ...e,
+      producto_id: undefined,
+      cantidad: undefined,
+      precio_unitario_usd: undefined,
+      alicuota_iva: undefined,
+      tipo_cambio: undefined,
+    }))
   }
 
   const cantidadNum = Number(form.cantidad.replace(',', '.'))
@@ -337,6 +387,20 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
               <option key={p.id} value={p.id}>{p.nombre}</option>
             ))}
           </Select>
+          <Select
+            label="Importar orden de compra"
+            value={form.pedido_compra_origen_id}
+            onChange={e => importarPedidoCompra(e.target.value)}
+          >
+            <option value="">No importar</option>
+            {pedidosCompra.map(p => (
+              <option key={p.id} value={p.id}>
+                {p.numero} - {p.proveedor} - {formatMoney(p.monto_total_usd ?? 0, 'USD')}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
           <Input
             label="Cantidad"
             type="number"
