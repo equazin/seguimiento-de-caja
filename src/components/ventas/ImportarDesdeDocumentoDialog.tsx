@@ -20,9 +20,11 @@ import type {
 interface ImportarDesdeDocumentoDialogProps {
   open: boolean
   tipoOperacion: TipoOperacion
+  tipoOperacionOrigen?: TipoOperacion
   tipoDestino: TipoDocumentoComercial
   tipoOrigen: TipoDocumentoComercial
   contactoId: string | null
+  mantenerContactoDestino?: boolean
   onClose: () => void
   onImport: (
     documento: Documento,
@@ -67,25 +69,28 @@ async function cargarItems(documento: Documento): Promise<ItemDraft[]> {
 export function ImportarDesdeDocumentoDialog({
   open,
   tipoOperacion,
+  tipoOperacionOrigen = tipoOperacion,
   tipoDestino,
   tipoOrigen,
   contactoId,
+  mantenerContactoDestino = false,
   onClose,
   onImport,
 }: ImportarDesdeDocumentoDialogProps) {
   const [busqueda, setBusqueda] = useState('')
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const documentosRaw = useDocumentos({
-    tipoOperacion,
+    tipoOperacion: tipoOperacionOrigen,
     tipoDocumento: tipoOrigen,
   })
   const loading = documentosRaw === undefined
+  const filtraPorContacto = tipoOperacionOrigen === tipoOperacion && Boolean(contactoId)
 
   const documentos = useMemo(() => {
     const q = busqueda.trim().toLowerCase()
     return (documentosRaw ?? [])
       .filter(d => d.estado !== 'anulado')
-      .filter(d => documentoMatchesContacto(d, tipoOperacion, contactoId))
+      .filter(d => filtraPorContacto ? documentoMatchesContacto(d, tipoOperacion, contactoId) : true)
       .filter(d => {
         if (!q) return true
         return (
@@ -93,15 +98,17 @@ export function ImportarDesdeDocumentoDialog({
           d.observaciones?.toLowerCase().includes(q)
         )
       })
-  }, [documentosRaw, busqueda, tipoOperacion, contactoId])
+  }, [documentosRaw, busqueda, tipoOperacion, contactoId, filtraPorContacto])
 
   async function handleImport(documento: Documento) {
     setLoadingId(documento.id)
     try {
       const items = await cargarItems(documento)
-      const contacto = tipoOperacion === 'venta'
-        ? documento.cliente_id ?? null
-        : documento.proveedor_id ?? null
+      const contacto = mantenerContactoDestino
+        ? null
+        : tipoOperacion === 'venta'
+          ? documento.cliente_id ?? null
+          : documento.proveedor_id ?? null
       onImport(documento, items, contacto)
       setBusqueda('')
       onClose()
@@ -120,7 +127,7 @@ export function ImportarDesdeDocumentoDialog({
       <div className="space-y-4">
         <p className="text-sm text-muted-foreground">
           Elegi un {tipoDocumentoLabel(tipoOrigen).toLowerCase()} para crear este {tipoDocumentoLabel(tipoDestino).toLowerCase()}.
-          {contactoId && ' Solo se muestran documentos del contacto seleccionado.'}
+          {filtraPorContacto && ' Solo se muestran documentos del contacto seleccionado.'}
         </p>
 
         <div className="relative">
@@ -142,7 +149,7 @@ export function ImportarDesdeDocumentoDialog({
             <EmptyState
               icon={FileText}
               titulo={`Sin ${tipoDocumentoLabel(tipoOrigen).toLowerCase()}s disponibles`}
-              descripcion={contactoId
+              descripcion={filtraPorContacto
                 ? 'No hay documentos para este contacto.'
                 : 'No hay documentos activos para importar.'}
             />
