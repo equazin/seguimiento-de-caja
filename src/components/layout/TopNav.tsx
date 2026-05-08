@@ -246,7 +246,7 @@ export function TopNav({ onGlobalAction }: TopNavProps) {
 
         <nav className="hidden border-t border-border md:block">
           <div ref={desktopMenuRef}>
-            <ul className="flex items-center gap-1 overflow-x-auto px-4 md:px-6">
+            <ul className="flex items-center gap-1 overflow-visible px-4 md:px-6">
               {NAV_ITEMS_BEFORE.map(item => (
                 <li key={item.to}>
                   <DesktopNavLink item={item} />
