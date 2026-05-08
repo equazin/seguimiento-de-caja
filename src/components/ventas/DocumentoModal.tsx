@@ -474,6 +474,7 @@ export function DocumentoEditorPanel({
   const [cotizacionUsdUpdatedAt, setCotizacionUsdUpdatedAt] = useState<string | null>(null)
   const [importDocumentoOpen, setImportDocumentoOpen] = useState(false)
   const [documentoOrigenId, setDocumentoOrigenId] = useState<string | null>(null)
+  const [productoRapidoOpen, setProductoRapidoOpen] = useState(false)
   const [productoRapidoIdx, setProductoRapidoIdx] = useState<number | null>(null)
   const [productoRapidoInitial, setProductoRapidoInitial] = useState<QuickProductForm>(() => quickProductEmpty())
   const [productoRapidoSubmitting, setProductoRapidoSubmitting] = useState(false)
@@ -656,6 +657,14 @@ export function DocumentoEditorPanel({
       Number(item?.alicuota_iva) || 21
     ))
     setProductoRapidoIdx(idx)
+    setProductoRapidoOpen(true)
+    setProductoRapidoError(null)
+  }
+
+  function openProductoRapidoNuevoItem() {
+    setProductoRapidoInitial(quickProductEmpty())
+    setProductoRapidoIdx(null)
+    setProductoRapidoOpen(true)
     setProductoRapidoError(null)
   }
 
@@ -668,21 +677,24 @@ export function DocumentoEditorPanel({
       setProductoRapidoError('El nombre es obligatorio')
       return
     }
-    if (productoRapidoIdx == null) return
-
     setProductoRapidoError(null)
     setProductoRapidoSubmitting(true)
     try {
       const producto = await crearProducto(empresa.id, quickProductPayload(formProducto))
-      updateItem(productoRapidoIdx, {
-        producto_id: producto.id,
-        codigo: producto.codigo,
-        descripcion: producto.nombre,
-        unidad_medida: producto.unidad_medida,
-        precio_unitario: producto.precio_neto,
-        alicuota_iva: producto.alicuota_iva,
-      })
+      if (productoRapidoIdx == null) {
+        addItem(producto)
+      } else {
+        updateItem(productoRapidoIdx, {
+          producto_id: producto.id,
+          codigo: producto.codigo,
+          descripcion: producto.nombre,
+          unidad_medida: producto.unidad_medida,
+          precio_unitario: producto.precio_neto,
+          alicuota_iva: producto.alicuota_iva,
+        })
+      }
       toast.success('Producto creado')
+      setProductoRapidoOpen(false)
       setProductoRapidoIdx(null)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'No se pudo crear el producto'
@@ -974,6 +986,16 @@ export function DocumentoEditorPanel({
                 type="button"
                 variant="secondary"
                 size="sm"
+                onClick={openProductoRapidoNuevoItem}
+                disabled={!editable}
+              >
+                <Plus size={14} />
+                Crear producto
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
                 onClick={() => addItem()}
                 disabled={!editable}
               >
@@ -1203,11 +1225,14 @@ export function DocumentoEditorPanel({
         />
       )}
       <ProductoRapidoDialog
-        open={productoRapidoIdx != null}
+        open={productoRapidoOpen}
         initial={productoRapidoInitial}
         submitting={productoRapidoSubmitting}
         error={productoRapidoError}
-        onClose={() => setProductoRapidoIdx(null)}
+        onClose={() => {
+          setProductoRapidoOpen(false)
+          setProductoRapidoIdx(null)
+        }}
         onSubmit={crearProductoRapido}
       />
     </>
