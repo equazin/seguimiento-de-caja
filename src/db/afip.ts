@@ -151,6 +151,13 @@ export interface Documento {
   no_gravado: number
   percepciones: number
   total: number
+  // Totales en USD (moneda primaria de carga)
+  subtotal_usd: number | null
+  iva_total_usd: number | null
+  exento_usd: number | null
+  no_gravado_usd: number | null
+  percepciones_usd: number | null
+  total_usd: number | null
   observaciones: string | null
   cuenta_id: string | null
   movimiento_id: string | null
@@ -173,6 +180,11 @@ export interface DocumentoItem {
   iva_importe: number
   subtotal: number
   total: number
+  // Mismos importes en USD
+  precio_unitario_usd: number | null
+  iva_importe_usd: number | null
+  subtotal_usd: number | null
+  total_usd: number | null
 }
 
 export interface DocumentoRelacion {

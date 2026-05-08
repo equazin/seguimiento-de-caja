@@ -188,7 +188,10 @@ export async function crearDocumento(input: CrearDocumentoInput): Promise<Docume
     throw new Error('Las notas se crean desde una factura')
   }
 
-  const { items, totales } = calcularTotales(input.items)
+  const { items, totales } = calcularTotales(input.items, {
+    monedaInput: input.moneda,
+    tipoCambio: input.tipoCambio,
+  })
   const numero = await siguienteNumeroInterno(
     input.empresaId,
     input.tipoOperacion,
@@ -215,6 +218,12 @@ export async function crearDocumento(input: CrearDocumentoInput): Promise<Docume
       no_gravado: totales.no_gravado,
       percepciones: totales.percepciones,
       total: totales.total,
+      subtotal_usd: totales.subtotal_usd,
+      iva_total_usd: totales.iva_total_usd,
+      exento_usd: totales.exento_usd,
+      no_gravado_usd: totales.no_gravado_usd,
+      percepciones_usd: totales.percepciones_usd,
+      total_usd: totales.total_usd,
       observaciones: input.observaciones,
       cuenta_id: input.cuentaId,
     })
@@ -256,7 +265,10 @@ interface ActualizarDocumentoInput {
 }
 
 export async function actualizarDocumento(input: ActualizarDocumentoInput): Promise<void> {
-  const { items, totales } = calcularTotales(input.items)
+  const { items, totales } = calcularTotales(input.items, {
+    monedaInput: input.moneda,
+    tipoCambio: input.tipoCambio,
+  })
   const actual = await getDocumentoById(input.id)
   const documentoValidado: Documento = {
     ...actual,
@@ -272,6 +284,12 @@ export async function actualizarDocumento(input: ActualizarDocumentoInput): Prom
     no_gravado: totales.no_gravado,
     percepciones: totales.percepciones,
     total: totales.total,
+    subtotal_usd: totales.subtotal_usd,
+    iva_total_usd: totales.iva_total_usd,
+    exento_usd: totales.exento_usd,
+    no_gravado_usd: totales.no_gravado_usd,
+    percepciones_usd: totales.percepciones_usd,
+    total_usd: totales.total_usd,
     observaciones: input.observaciones,
     cuenta_id: input.cuentaId,
     estado: input.estado,
@@ -293,6 +311,12 @@ export async function actualizarDocumento(input: ActualizarDocumentoInput): Prom
       no_gravado: totales.no_gravado,
       percepciones: totales.percepciones,
       total: totales.total,
+      subtotal_usd: totales.subtotal_usd,
+      iva_total_usd: totales.iva_total_usd,
+      exento_usd: totales.exento_usd,
+      no_gravado_usd: totales.no_gravado_usd,
+      percepciones_usd: totales.percepciones_usd,
+      total_usd: totales.total_usd,
       observaciones: input.observaciones,
       cuenta_id: input.cuentaId,
       estado: input.estado,

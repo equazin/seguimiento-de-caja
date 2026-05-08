@@ -117,7 +117,14 @@ export function DocumentoDetalle({ tipoOperacion }: DocumentoDetalleProps) {
             )}
             <HeaderStat label="Estado">{badgeForEstado(documento.estado)}</HeaderStat>
             <HeaderStat label="Total">
-              <span className="text-white">{formatMoney(documento.total, documento.moneda)}</span>
+              <div className="text-right">
+                {documento.total_usd != null && (
+                  <div className="text-white">{formatMoney(documento.total_usd, 'USD')}</div>
+                )}
+                <div className={documento.total_usd != null ? 'text-[11px] text-muted-foreground' : 'text-white'}>
+                  {formatMoney(documento.total)}
+                </div>
+              </div>
             </HeaderStat>
           </div>
         </div>
@@ -133,7 +140,8 @@ export function DocumentoDetalle({ tipoOperacion }: DocumentoDetalleProps) {
                   <tr>
                     <th className="px-3 py-2 text-left font-medium">Descripcion</th>
                     <th className="px-3 py-2 text-right font-medium">Cant.</th>
-                    <th className="px-3 py-2 text-right font-medium">P. unit.</th>
+                    <th className="px-3 py-2 text-right font-medium">P. unit. USD</th>
+                    <th className="px-3 py-2 text-right font-medium">P. unit. ARS</th>
                     <th className="px-3 py-2 text-right font-medium">IVA</th>
                     <th className="px-3 py-2 text-right font-medium">Total</th>
                   </tr>
@@ -147,17 +155,25 @@ export function DocumentoDetalle({ tipoOperacion }: DocumentoDetalleProps) {
                           <div className="mt-1 text-xs text-muted-foreground">{item.codigo}</div>
                         )}
                       </td>
-                      <td className="px-3 py-3 text-right text-muted-foreground">
+                      <td className="px-3 py-3 text-right text-muted-foreground tabular-nums">
                         {Number(item.cantidad).toLocaleString('es-AR')}
                       </td>
-                      <td className="px-3 py-3 text-right text-muted-foreground">
-                        {formatMoney(item.precio_unitario, documento.moneda)}
+                      <td className="px-3 py-3 text-right text-muted-foreground tabular-nums">
+                        {item.precio_unitario_usd != null ? formatMoney(item.precio_unitario_usd, 'USD') : '—'}
+                      </td>
+                      <td className="px-3 py-3 text-right text-muted-foreground tabular-nums">
+                        {formatMoney(item.precio_unitario)}
                       </td>
                       <td className="px-3 py-3 text-right text-muted-foreground">
                         {Number(item.alicuota_iva).toLocaleString('es-AR')}%
                       </td>
-                      <td className="px-3 py-3 text-right font-medium text-white">
-                        {formatMoney(item.total, documento.moneda)}
+                      <td className="px-3 py-3 text-right font-medium text-white tabular-nums">
+                        <div>{item.total_usd != null ? formatMoney(item.total_usd, 'USD') : formatMoney(item.total)}</div>
+                        {item.total_usd != null && (
+                          <div className="text-[11px] font-normal text-muted-foreground">
+                            ≈ {formatMoney(item.total)}
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -239,28 +255,60 @@ export function DocumentoDetalle({ tipoOperacion }: DocumentoDetalleProps) {
           <section className="rounded-xl border border-border bg-surface/90 p-4 shadow-xl shadow-black/10 sm:p-5">
             <h2 className="text-sm font-semibold text-white">Totales</h2>
             <dl className="mt-4 space-y-3 text-sm">
-              <DetailRow label="Subtotal">{formatMoney(documento.subtotal, documento.moneda)}</DetailRow>
-              <DetailRow label="IVA">{formatMoney(documento.iva_total, documento.moneda)}</DetailRow>
+              <DetailRow label="Subtotal">
+                <DualMoney usd={documento.subtotal_usd} ars={documento.subtotal} />
+              </DetailRow>
+              <DetailRow label="IVA">
+                <DualMoney usd={documento.iva_total_usd} ars={documento.iva_total} />
+              </DetailRow>
               {Number(documento.exento) > 0 && (
-                <DetailRow label="Exento">{formatMoney(documento.exento, documento.moneda)}</DetailRow>
+                <DetailRow label="Exento">
+                  <DualMoney usd={documento.exento_usd} ars={documento.exento} />
+                </DetailRow>
               )}
               {Number(documento.no_gravado) > 0 && (
-                <DetailRow label="No gravado">{formatMoney(documento.no_gravado, documento.moneda)}</DetailRow>
+                <DetailRow label="No gravado">
+                  <DualMoney usd={documento.no_gravado_usd} ars={documento.no_gravado} />
+                </DetailRow>
               )}
               {Number(documento.percepciones) > 0 && (
-                <DetailRow label="Percepciones">{formatMoney(documento.percepciones, documento.moneda)}</DetailRow>
+                <DetailRow label="Percepciones">
+                  <DualMoney usd={documento.percepciones_usd} ars={documento.percepciones} />
+                </DetailRow>
               )}
               <div className="border-t border-border pt-3">
                 <DetailRow label="Total">
-                  <span className="text-base font-semibold text-white">
-                    {formatMoney(documento.total, documento.moneda)}
-                  </span>
+                  <DualMoney
+                    usd={documento.total_usd}
+                    ars={documento.total}
+                    primaryClassName="text-base font-semibold text-white"
+                  />
                 </DetailRow>
               </div>
             </dl>
           </section>
         </aside>
       </div>
+    </div>
+  )
+}
+
+function DualMoney({
+  usd,
+  ars,
+  primaryClassName = 'text-white',
+}: {
+  usd: number | null
+  ars: number
+  primaryClassName?: string
+}) {
+  if (usd == null) {
+    return <span className={primaryClassName}>{formatMoney(ars)}</span>
+  }
+  return (
+    <div className="text-right">
+      <div className={primaryClassName}>{formatMoney(usd, 'USD')}</div>
+      <div className="text-[11px] font-normal text-muted-foreground">≈ {formatMoney(ars)}</div>
     </div>
   )
 }

@@ -284,7 +284,8 @@ export function Ventas() {
                   <th className="text-left px-4 py-3 font-medium">Fecha</th>
                   <th className="text-left px-4 py-3 font-medium">Cliente</th>
                   <th className="text-left px-4 py-3 font-medium">Estado</th>
-                  <th className="text-right px-4 py-3 font-medium">Total</th>
+                  <th className="text-right px-4 py-3 font-medium">Total USD</th>
+                  <th className="text-right px-4 py-3 font-medium">Total ARS</th>
                   <th className="text-right px-4 py-3 font-medium">Acciones</th>
                 </tr>
               </thead>
@@ -321,8 +322,11 @@ export function Ventas() {
                         {cliente?.razon_social ?? <span className="text-muted-foreground">Consumidor final</span>}
                       </td>
                       <td className="px-4 py-3">{badgeForEstado(d.estado)}</td>
-                      <td className="px-4 py-3 text-right text-white font-medium">
-                        {formatMoney(d.total, d.moneda)}
+                      <td className="px-4 py-3 text-right text-sm font-semibold text-white tabular-nums">
+                        {d.total_usd != null ? formatMoney(d.total_usd, 'USD') : <span className="text-muted-foreground">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-right text-sm text-muted-foreground tabular-nums">
+                        {formatMoney(d.total)}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <RowActionsMenu

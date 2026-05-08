@@ -9,6 +9,11 @@ import type {
 // Calculo de totales para items de documento
 // =========================================================================
 
+/**
+ * El precio_unitario del item se interpreta en la moneda primaria
+ * elegida (`monedaInput`). El cálculo devuelve siempre los importes
+ * en ambas monedas usando el `tipoCambio` (ARS por 1 USD).
+ */
 export interface ItemDraft {
   producto_id: string | null
   codigo: string | null
@@ -21,9 +26,14 @@ export interface ItemDraft {
 }
 
 export interface ItemCalculado extends ItemDraft {
-  subtotal: number      // cantidad * precio - bonif (sin IVA)
-  iva_importe: number
-  total: number
+  subtotal: number      // cantidad * precio - bonif (sin IVA, ARS)
+  iva_importe: number   // ARS
+  total: number         // ARS
+  // Mismos importes en USD
+  precio_unitario_usd: number
+  subtotal_usd: number
+  iva_importe_usd: number
+  total_usd: number
 }
 
 export interface TotalesDocumento {
@@ -33,37 +43,83 @@ export interface TotalesDocumento {
   no_gravado: number
   percepciones: number
   total: number
+  // En USD
+  subtotal_usd: number
+  iva_total_usd: number
+  exento_usd: number
+  no_gravado_usd: number
+  percepciones_usd: number
+  total_usd: number
 }
+
+export type MonedaInput = 'ARS' | 'USD'
 
 function round(n: number): number {
   return Math.round(n * 100) / 100
 }
 
-export function calcularItem(item: ItemDraft): ItemCalculado {
+interface CalcularItemOpts {
+  monedaInput: MonedaInput
+  tipoCambio: number
+}
+
+export function calcularItem(item: ItemDraft, opts: CalcularItemOpts): ItemCalculado {
+  const tc = opts.tipoCambio > 0 ? opts.tipoCambio : 1
   const bonif = Math.max(0, Math.min(100, item.bonificacion))
-  const baseBruta = item.cantidad * item.precio_unitario
-  const subtotal = round(baseBruta * (1 - bonif / 100))
-  const iva = round(subtotal * (item.alicuota_iva / 100))
+  const factorBonif = 1 - bonif / 100
+
+  // Resolvemos precio en ambas monedas según la moneda primaria.
+  let precioUnitarioArs: number
+  let precioUnitarioUsd: number
+  if (opts.monedaInput === 'USD') {
+    precioUnitarioUsd = item.precio_unitario
+    precioUnitarioArs = round(item.precio_unitario * tc)
+  } else {
+    precioUnitarioArs = item.precio_unitario
+    precioUnitarioUsd = round(item.precio_unitario / tc)
+  }
+
+  const subtotalArs = round(item.cantidad * precioUnitarioArs * factorBonif)
+  const subtotalUsd = round(item.cantidad * precioUnitarioUsd * factorBonif)
+  const ivaArs = round(subtotalArs * (item.alicuota_iva / 100))
+  const ivaUsd = round(subtotalUsd * (item.alicuota_iva / 100))
+
   return {
     ...item,
-    subtotal,
-    iva_importe: iva,
-    total: round(subtotal + iva),
+    precio_unitario: precioUnitarioArs,
+    subtotal: subtotalArs,
+    iva_importe: ivaArs,
+    total: round(subtotalArs + ivaArs),
+    precio_unitario_usd: precioUnitarioUsd,
+    subtotal_usd: subtotalUsd,
+    iva_importe_usd: ivaUsd,
+    total_usd: round(subtotalUsd + ivaUsd),
   }
 }
 
-export function calcularTotales(items: ItemDraft[]): {
+export function calcularTotales(
+  items: ItemDraft[],
+  opts: CalcularItemOpts = { monedaInput: 'ARS', tipoCambio: 1 }
+): {
   items: ItemCalculado[]
   totales: TotalesDocumento
 } {
-  const calculados = items.map(calcularItem)
-  const subtotal = round(calculados.reduce((acc, it) => acc + it.subtotal, 0))
-  const ivaTotal = round(calculados.reduce((acc, it) => acc + it.iva_importe, 0))
+  const calculados = items.map(it => calcularItem(it, opts))
+  const sum = (key: keyof ItemCalculado) =>
+    round(calculados.reduce((acc, it) => acc + Number(it[key] ?? 0), 0))
+
+  const subtotal = sum('subtotal')
+  const ivaTotal = sum('iva_importe')
+  const subtotalUsd = sum('subtotal_usd')
+  const ivaTotalUsd = sum('iva_importe_usd')
+
   const exento = round(
-    calculados
-      .filter(it => it.alicuota_iva === 0)
-      .reduce((acc, it) => acc + it.subtotal, 0)
+    calculados.filter(it => it.alicuota_iva === 0).reduce((acc, it) => acc + it.subtotal, 0)
   )
+  const exentoUsd = round(
+    calculados.filter(it => it.alicuota_iva === 0).reduce((acc, it) => acc + it.subtotal_usd, 0)
+  )
+
   return {
     items: calculados,
     totales: {
@@ -73,6 +129,12 @@ export function calcularTotales(items: ItemDraft[]): {
       no_gravado: 0,
       percepciones: 0,
       total: round(subtotal + ivaTotal),
+      subtotal_usd: subtotalUsd,
+      iva_total_usd: ivaTotalUsd,
+      exento_usd: exentoUsd,
+      no_gravado_usd: 0,
+      percepciones_usd: 0,
+      total_usd: round(subtotalUsd + ivaTotalUsd),
     },
   }
 }
@@ -205,5 +267,9 @@ export function itemFromCalculado(it: ItemCalculado, orden: number): Omit<Docume
     iva_importe: it.iva_importe,
     subtotal: it.subtotal,
     total: it.total,
+    precio_unitario_usd: it.precio_unitario_usd,
+    iva_importe_usd: it.iva_importe_usd,
+    subtotal_usd: it.subtotal_usd,
+    total_usd: it.total_usd,
   }
 }

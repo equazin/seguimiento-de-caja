@@ -79,7 +79,7 @@ function emptyForm(): FormState {
     contacto_id: '',
     fecha: todayStr(),
     fecha_vencimiento: '',
-    moneda: 'ARS',
+    moneda: 'USD',
     tipo_cambio: '1',
     cuenta_id: '',
     metodo_pago: 'transferencia',
@@ -323,9 +323,12 @@ export function DocumentoEditorPanel({
     }))
   }, [documento?.id, movimientoCaja?.id])
 
-  // Cargar items existentes en el form al editar
+  // Cargar items existentes en el form al editar.
+  // Si la moneda primaria del documento es USD usamos precio_unitario_usd,
+  // sino el precio_unitario (ARS).
   useEffect(() => {
     if (!documento || !documentoItems) return
+    const monedaPrimaria = documento.moneda
     setForm(prev => ({
       ...prev,
       items: documentoItems.map(it => ({
@@ -334,7 +337,10 @@ export function DocumentoEditorPanel({
         descripcion: it.descripcion,
         cantidad: it.cantidad,
         unidad_medida: it.unidad_medida,
-        precio_unitario: it.precio_unitario,
+        precio_unitario:
+          monedaPrimaria === 'USD' && it.precio_unitario_usd != null
+            ? it.precio_unitario_usd
+            : it.precio_unitario,
         bonificacion: it.bonificacion,
         alicuota_iva: it.alicuota_iva,
       })),
@@ -368,11 +374,34 @@ export function DocumentoEditorPanel({
     return TIPOS_DOCUMENTO_BASE
   }, [documento?.tipo_documento])
 
-  const totales = useMemo(() => calcularTotales(form.items).totales, [form.items])
+  const tipoCambioNum = Number(form.tipo_cambio.replace(',', '.'))
+  const tipoCambioVigente = Number.isFinite(tipoCambioNum) && tipoCambioNum > 0 ? tipoCambioNum : 1
+  const totales = useMemo(
+    () => calcularTotales(form.items, {
+      monedaInput: form.moneda,
+      tipoCambio: tipoCambioVigente,
+    }).totales,
+    [form.items, form.moneda, tipoCambioVigente]
+  )
   const esNota = form.tipo_documento === 'nota_credito' || form.tipo_documento === 'nota_debito'
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm(prev => ({ ...prev, [key]: value }))
+  }
+
+  function cambiarMoneda(nuevaMoneda: 'ARS' | 'USD') {
+    setForm(prev => {
+      if (prev.moneda === nuevaMoneda) return prev
+      const tc = Number(prev.tipo_cambio.replace(',', '.'))
+      const tcSeguro = Number.isFinite(tc) && tc > 0 ? tc : 1
+      const items = prev.items.map(it => {
+        const nuevoPrecio = nuevaMoneda === 'USD'
+          ? Math.round((it.precio_unitario / tcSeguro) * 100) / 100
+          : Math.round(it.precio_unitario * tcSeguro * 100) / 100
+        return { ...it, precio_unitario: nuevoPrecio }
+      })
+      return { ...prev, moneda: nuevaMoneda, items }
+    })
   }
 
   function updateItem(idx: number, patch: Partial<ItemDraft>) {
@@ -600,16 +629,15 @@ export function DocumentoEditorPanel({
               disabled={!editable}
             />
             <Select
-              label="Moneda"
+              label="Moneda primaria"
               value={form.moneda}
-              onChange={e => update('moneda', e.target.value as 'ARS' | 'USD')}
+              onChange={e => cambiarMoneda(e.target.value as 'ARS' | 'USD')}
               disabled={!editable || esNota}
             >
+              <option value="USD">USD (recomendado)</option>
               <option value="ARS">ARS</option>
-              <option value="USD">USD</option>
             </Select>
-            {form.moneda === 'USD' && (
-              <Input
+            <Input
                 label="Tipo de cambio"
                 type="number"
                 step="0.01"
@@ -621,7 +649,6 @@ export function DocumentoEditorPanel({
                   ? `Cotizacion actualizada ${formatDateTime(cotizacionUsdUpdatedAt)}`
                   : 'Cotizacion sin fecha de actualizacion'}
               />
-            )}
           </div>
         </div>
 
@@ -708,7 +735,7 @@ export function DocumentoEditorPanel({
                   <tr>
                     <th className="text-left px-3 py-2 font-medium">Producto / descripción</th>
                     <th className="text-right px-3 py-2 font-medium w-20">Cant.</th>
-                    <th className="text-right px-3 py-2 font-medium w-28">P. unit.</th>
+                    <th className="text-right px-3 py-2 font-medium w-28">P. unit. {form.moneda}</th>
                     <th className="text-right px-3 py-2 font-medium w-20">Bonif. %</th>
                     <th className="text-right px-3 py-2 font-medium w-20">IVA %</th>
                     <th className="text-right px-3 py-2 font-medium w-28">Subtotal</th>
@@ -717,7 +744,10 @@ export function DocumentoEditorPanel({
                 </thead>
                 <tbody>
                   {form.items.map((it, idx) => {
-                    const subtotal = it.cantidad * it.precio_unitario * (1 - it.bonificacion / 100)
+                    const subtotalPrimario = it.cantidad * it.precio_unitario * (1 - it.bonificacion / 100)
+                    const subtotalAlt = form.moneda === 'USD'
+                      ? subtotalPrimario * tipoCambioVigente
+                      : subtotalPrimario / (tipoCambioVigente || 1)
                     return (
                       <tr key={idx} className="border-t border-border align-top">
                         <td className="px-3 py-2">
@@ -784,8 +814,13 @@ export function DocumentoEditorPanel({
                             ))}
                           </select>
                         </td>
-                        <td className="px-3 py-2 text-right text-white text-xs">
-                          {formatMoney(subtotal, form.moneda)}
+                        <td className="px-3 py-2 text-right text-xs">
+                          <div className="font-semibold text-white">{formatMoney(subtotalPrimario, form.moneda)}</div>
+                          {tipoCambioVigente > 0 && subtotalPrimario > 0 && (
+                            <div className="mt-0.5 text-[10px] text-muted-foreground">
+                              ≈ {formatMoney(subtotalAlt, form.moneda === 'USD' ? 'ARS' : 'USD')}
+                            </div>
+                          )}
                         </td>
                         <td className="px-3 py-2 text-right">
                           <button
@@ -814,23 +849,43 @@ export function DocumentoEditorPanel({
             disabled={!editable}
           />
           <div className="space-y-2 rounded-xl border border-border bg-surface-2/70 p-4 text-sm">
-            <div className="flex justify-between text-muted-foreground">
+            <div className="flex items-baseline justify-between text-muted-foreground">
               <span>Subtotal neto</span>
-              <span className="text-white">{formatMoney(totales.subtotal, form.moneda)}</span>
+              <div className="text-right">
+                <div className="text-white">{formatMoney(form.moneda === 'USD' ? totales.subtotal_usd : totales.subtotal, form.moneda)}</div>
+                <div className="text-[11px] text-muted-foreground">
+                  ≈ {formatMoney(form.moneda === 'USD' ? totales.subtotal : totales.subtotal_usd, form.moneda === 'USD' ? 'ARS' : 'USD')}
+                </div>
+              </div>
             </div>
-            <div className="flex justify-between text-muted-foreground">
+            <div className="flex items-baseline justify-between text-muted-foreground">
               <span>IVA</span>
-              <span className="text-white">{formatMoney(totales.iva_total, form.moneda)}</span>
+              <div className="text-right">
+                <div className="text-white">{formatMoney(form.moneda === 'USD' ? totales.iva_total_usd : totales.iva_total, form.moneda)}</div>
+                <div className="text-[11px] text-muted-foreground">
+                  ≈ {formatMoney(form.moneda === 'USD' ? totales.iva_total : totales.iva_total_usd, form.moneda === 'USD' ? 'ARS' : 'USD')}
+                </div>
+              </div>
             </div>
             {totales.exento > 0 && (
-              <div className="flex justify-between text-muted-foreground">
+              <div className="flex items-baseline justify-between text-muted-foreground">
                 <span>Exento</span>
-                <span className="text-white">{formatMoney(totales.exento, form.moneda)}</span>
+                <div className="text-right">
+                  <div className="text-white">{formatMoney(form.moneda === 'USD' ? totales.exento_usd : totales.exento, form.moneda)}</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    ≈ {formatMoney(form.moneda === 'USD' ? totales.exento : totales.exento_usd, form.moneda === 'USD' ? 'ARS' : 'USD')}
+                  </div>
+                </div>
               </div>
             )}
-            <div className="border-t border-border pt-2 flex justify-between font-semibold">
+            <div className="border-t border-border pt-2 flex items-baseline justify-between font-semibold">
               <span className="text-white">Total</span>
-              <span className="text-white">{formatMoney(totales.total, form.moneda)}</span>
+              <div className="text-right">
+                <div className="text-base text-white">{formatMoney(form.moneda === 'USD' ? totales.total_usd : totales.total, form.moneda)}</div>
+                <div className="text-[11px] font-normal text-muted-foreground">
+                  ≈ {formatMoney(form.moneda === 'USD' ? totales.total : totales.total_usd, form.moneda === 'USD' ? 'ARS' : 'USD')}
+                </div>
+              </div>
             </div>
           </div>
         </div>
