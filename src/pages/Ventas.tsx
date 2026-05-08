@@ -135,6 +135,10 @@ export function Ventas() {
     navigate(editable ? `/ventas/${d.id}` : `/ventas/${d.id}/detalle`)
   }
 
+  function abrirDetalle(d: Documento) {
+    navigate(`/ventas/${d.id}/detalle`)
+  }
+
   async function anular(d: Documento) {
     try {
       await cambiarEstadoDocumento(d.id, 'anulado')
@@ -317,9 +321,21 @@ export function Ventas() {
                   const arca = arcaMap.get(d.id)
                   const destinoConversion = siguienteTipoConvertible(d.tipo_documento)
                   return (
-                    <tr key={d.id} className="border-t border-border transition-colors hover:bg-surface-2/60">
+                    <tr
+                      key={d.id}
+                      className="border-t border-border transition-colors hover:bg-surface-2/60"
+                      onDoubleClick={() => abrirEditar(d)}
+                      title="Doble click para abrir"
+                    >
                       <td className="px-4 py-3 text-white font-mono text-xs">
-                        <div>{d.numero_interno}</div>
+                        <button
+                          type="button"
+                          onClick={() => abrirEditar(d)}
+                          className="underline-offset-4 hover:text-primary hover:underline"
+                          title={d.tipo_documento === 'presupuesto' && d.estado !== 'anulado' ? 'Editar presupuesto' : 'Abrir documento'}
+                        >
+                          {d.numero_interno}
+                        </button>
                         {arca?.cae && (
                           <div className="mt-1 text-[11px] font-sans text-muted-foreground">
                             CAE {arca.cae}
@@ -358,6 +374,7 @@ export function Ventas() {
                             tieneArca: !!arca?.cae,
                             rechazadoArca: arca?.resultado === 'R',
                             onEditar: () => abrirEditar(d),
+                            onVerDetalle: () => abrirDetalle(d),
                             onConfirmar: () => void confirmar(d),
                             onEliminar: () => setConfirmDelete(d),
                             onEmitir: () => void emitir(d),
@@ -404,6 +421,7 @@ interface AccionesDocumentoOpts {
   tieneArca: boolean
   rechazadoArca: boolean
   onEditar: () => void
+  onVerDetalle: () => void
   onConfirmar: () => void
   onEliminar: () => void
   onEmitir: () => void
@@ -421,6 +439,7 @@ function accionesDocumento({
   tieneArca,
   rechazadoArca,
   onEditar,
+  onVerDetalle,
   onConfirmar,
   onEliminar,
   onEmitir,
@@ -442,10 +461,18 @@ function accionesDocumento({
 
   return [
     {
-      id: 'ver',
-      label: puedeEditar ? 'Editar' : 'Ver detalle',
+      id: 'editar',
+      label: documento.tipo_documento === 'presupuesto' ? 'Editar presupuesto' : 'Editar',
       icon: Edit2,
+      hidden: !puedeEditar,
       onClick: onEditar,
+    },
+    {
+      id: 'ver',
+      label: 'Ver detalle',
+      icon: FileText,
+      hidden: esBorrador,
+      onClick: onVerDetalle,
     },
     {
       id: 'convertir',
