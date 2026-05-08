@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { MoreHorizontal, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/formatters'
 
@@ -17,24 +18,53 @@ interface RowActionsMenuProps {
   ariaLabel?: string
 }
 
+interface MenuPosition {
+  top: number
+  left: number
+}
+
+const MENU_WIDTH = 176 // 11rem
+
 export function RowActionsMenu({ actions, ariaLabel = 'Acciones' }: RowActionsMenuProps) {
   const visible = actions.filter(a => !a.hidden)
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+  const [position, setPosition] = useState<MenuPosition | null>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    if (!open || !triggerRef.current) return
+    const rect = triggerRef.current.getBoundingClientRect()
+    const top = rect.bottom + 4
+    const left = Math.max(8, Math.min(rect.right - MENU_WIDTH, window.innerWidth - MENU_WIDTH - 8))
+    setPosition({ top, left })
+  }, [open])
 
   useEffect(() => {
     if (!open) return
-    function onPointerDown(event: MouseEvent) {
-      if (!ref.current?.contains(event.target as Node)) setOpen(false)
+
+    function close(event: MouseEvent) {
+      const target = event.target as Node
+      if (triggerRef.current?.contains(target)) return
+      if (menuRef.current?.contains(target)) return
+      setOpen(false)
     }
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') setOpen(false)
     }
-    document.addEventListener('mousedown', onPointerDown)
+    function onScrollOrResize() {
+      setOpen(false)
+    }
+
+    document.addEventListener('mousedown', close)
     document.addEventListener('keydown', onKeyDown)
+    window.addEventListener('scroll', onScrollOrResize, true)
+    window.addEventListener('resize', onScrollOrResize)
     return () => {
-      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('mousedown', close)
       document.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('scroll', onScrollOrResize, true)
+      window.removeEventListener('resize', onScrollOrResize)
     }
   }, [open])
 
@@ -43,8 +73,9 @@ export function RowActionsMenu({ actions, ariaLabel = 'Acciones' }: RowActionsMe
   }
 
   return (
-    <div ref={ref} className="relative inline-block text-left">
+    <>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen(value => !value)}
         className={cn(
@@ -57,10 +88,12 @@ export function RowActionsMenu({ actions, ariaLabel = 'Acciones' }: RowActionsMe
       >
         <MoreHorizontal size={16} />
       </button>
-      {open && (
+      {open && position && createPortal(
         <div
+          ref={menuRef}
           role="menu"
-          className="absolute right-0 top-full z-30 mt-1 min-w-[10rem] overflow-hidden rounded-lg border border-border bg-surface shadow-2xl shadow-black/40"
+          style={{ top: position.top, left: position.left, width: MENU_WIDTH }}
+          className="fixed z-50 overflow-hidden rounded-lg border border-border bg-surface shadow-2xl shadow-black/50"
         >
           {visible.map(action => (
             <button
@@ -85,8 +118,9 @@ export function RowActionsMenu({ actions, ariaLabel = 'Acciones' }: RowActionsMe
               <span>{action.label}</span>
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
-    </div>
+    </>
   )
 }

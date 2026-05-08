@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { Plus, Search, Trash2 } from 'lucide-react'
+import { ClipboardList, Plus, Search, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Dialog } from '@/components/ui/Dialog'
 import { Input, Select, Textarea } from '@/components/ui/Input'
@@ -17,6 +17,7 @@ import { useMovimiento } from '@/hooks/useMovimientos'
 import { calcularTotales, type ItemDraft } from '@/lib/documentos'
 import { METODOS_PAGO } from '@/lib/constants'
 import { cn, formatDateTime, formatMoney, todayStr } from '@/lib/formatters'
+import { ImportarDesdePedidoDialog } from '@/components/ventas/ImportarDesdePedidoDialog'
 import type {
   Documento,
   TipoDocumentoComercial,
@@ -276,6 +277,7 @@ export function DocumentoEditorPanel({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [cotizacionUsdUpdatedAt, setCotizacionUsdUpdatedAt] = useState<string | null>(null)
+  const [importPedidoOpen, setImportPedidoOpen] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -414,6 +416,14 @@ export function DocumentoEditorPanel({
     setForm(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== idx) }))
   }
 
+  function handleImportFromPedido(itemsImportados: ItemDraft[], contactoId: string | null) {
+    setForm(prev => ({
+      ...prev,
+      contacto_id: prev.contacto_id || (contactoId ?? prev.contacto_id),
+      items: [...prev.items, ...itemsImportados],
+    }))
+  }
+
   async function submitDocumento(estadoFinal: EstadoDocumento) {
     if (!empresa) {
       setError('No hay empresa configurada')
@@ -537,6 +547,7 @@ export function DocumentoEditorPanel({
   }, [editable, submitting, form, empresa, tipoOperacion, documento?.id])
 
   return (
+    <>
       <form className={cn('space-y-5', className)} onSubmit={e => onSubmit(e, form.estado)}>
         {!editable && (
           <div className="rounded-lg border border-info/30 bg-info/10 px-3 py-2 text-sm text-info">
@@ -660,18 +671,30 @@ export function DocumentoEditorPanel({
         )}
 
         <div className="rounded-xl border border-border bg-surface-2/70 p-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-semibold text-white">Items</h3>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => addItem()}
-              disabled={!editable}
-            >
-              <Plus size={14} />
-              Agregar item
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setImportPedidoOpen(true)}
+                disabled={!editable}
+              >
+                <ClipboardList size={14} />
+                Importar de orden
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => addItem()}
+                disabled={!editable}
+              >
+                <Plus size={14} />
+                Agregar item
+              </Button>
+            </div>
           </div>
 
           {form.items.length === 0 ? (
@@ -839,5 +862,13 @@ export function DocumentoEditorPanel({
           </Button>
         </div>
       </form>
+      <ImportarDesdePedidoDialog
+        open={importPedidoOpen}
+        tipoOperacion={tipoOperacion}
+        contactoId={form.contacto_id || null}
+        onClose={() => setImportPedidoOpen(false)}
+        onImport={(_pedido, items, contactoId) => handleImportFromPedido(items, contactoId)}
+      />
+    </>
   )
 }
