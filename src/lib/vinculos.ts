@@ -1,10 +1,36 @@
 import type { EstadoPedidoCompra, EstadoPedidoVenta, MovimientoVinculo, PedidoCompra, PedidoVenta } from '@/db/schema'
 
+const RETENCION_GANANCIAS_RE = /\s*\[retencion_ganancias:([0-9]+(?:[\.,][0-9]+)?)\]\s*/i
+
+export function obtenerRetencionGanancias(vinculo: Pick<MovimientoVinculo, 'notas'>): number {
+  const match = vinculo.notas?.match(RETENCION_GANANCIAS_RE)
+  if (!match) return 0
+  const value = Number(match[1].replace(',', '.'))
+  return Number.isFinite(value) && value > 0 ? value : 0
+}
+
+export function limpiarNotaRetencion(notas: string | null | undefined): string {
+  return (notas ?? '').replace(RETENCION_GANANCIAS_RE, '').trim()
+}
+
+export function serializarNotaRetencion(notas: string | null | undefined, retencionGanancias: number): string | null {
+  const notaLimpia = limpiarNotaRetencion(notas)
+  const retencion = Number.isFinite(retencionGanancias) && retencionGanancias > 0
+    ? Math.round(retencionGanancias * 100) / 100
+    : 0
+  const marker = retencion > 0 ? `[retencion_ganancias:${retencion}]` : ''
+  return [notaLimpia, marker].filter(Boolean).join(' ') || null
+}
+
+export function montoCanceladoVinculo(vinculo: Pick<MovimientoVinculo, 'monto_aplicado' | 'notas'>): number {
+  return Number(vinculo.monto_aplicado) + obtenerRetencionGanancias(vinculo)
+}
+
 export function calcularSaldoPendiente(
   pedido: PedidoCompra | PedidoVenta,
   vinculos: MovimientoVinculo[]
 ): number {
-  const totalPagado = vinculos.reduce((s, v) => s + v.monto_aplicado, 0)
+  const totalPagado = vinculos.reduce((s, v) => s + montoCanceladoVinculo(v), 0)
   return Math.max(0, pedido.monto_total - totalPagado)
 }
 
@@ -13,7 +39,7 @@ export function calcularEstadoCompra(
   vinculos: MovimientoVinculo[]
 ): EstadoPedidoCompra {
   if (pedido.estado === 'cancelado') return 'cancelado'
-  const totalPagado = vinculos.reduce((s, v) => s + v.monto_aplicado, 0)
+  const totalPagado = vinculos.reduce((s, v) => s + montoCanceladoVinculo(v), 0)
   if (totalPagado <= 0) return 'pendiente'
   if (totalPagado >= pedido.monto_total) return 'pagado_total'
   return 'pagado_parcial'
@@ -24,7 +50,7 @@ export function calcularEstadoVenta(
   vinculos: MovimientoVinculo[]
 ): EstadoPedidoVenta {
   if (pedido.estado === 'cancelado') return 'cancelado'
-  const totalCobrado = vinculos.reduce((s, v) => s + v.monto_aplicado, 0)
+  const totalCobrado = vinculos.reduce((s, v) => s + montoCanceladoVinculo(v), 0)
   if (totalCobrado <= 0) return 'pendiente'
   if (totalCobrado >= pedido.monto_total) return 'cobrado_total'
   return 'cobrado_parcial'

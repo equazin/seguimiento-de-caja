@@ -22,6 +22,9 @@ import {
   ESTADO_VENTA_CONFIG,
   calcularSaldoPendiente,
   estaVencido,
+  limpiarNotaRetencion,
+  montoCanceladoVinculo,
+  obtenerRetencionGanancias,
   venceProximamente,
 } from '@/lib/vinculos'
 import { toast } from 'sonner'
@@ -168,6 +171,8 @@ function FilaDetalle({ id }: { id: string }) {
   )
   const { pedido, vinculos } = detalle
   const totalCobrado = vinculos.reduce((s, v) => s + v.monto_aplicado, 0)
+  const totalRetenciones = vinculos.reduce((s, v) => s + obtenerRetencionGanancias(v), 0)
+  const totalCancelado = vinculos.reduce((s, v) => s + montoCanceladoVinculo(v), 0)
   const saldo = calcularSaldoPendiente(pedido, vinculos)
 
   return (
@@ -184,6 +189,18 @@ function FilaDetalle({ id }: { id: string }) {
           <p className="text-xs text-muted-foreground">Cobrado</p>
           <p className="font-semibold text-success">{formatMoney(totalCobrado)}</p>
         </div>
+        {totalRetenciones > 0 && (
+          <div>
+            <p className="text-xs text-muted-foreground">Retenciones</p>
+            <p className="font-semibold text-warning">{formatMoney(totalRetenciones)}</p>
+          </div>
+        )}
+        {totalRetenciones > 0 && (
+          <div>
+            <p className="text-xs text-muted-foreground">Cancelado</p>
+            <p className="font-semibold text-white">{formatMoney(totalCancelado)}</p>
+          </div>
+        )}
         <div>
           <p className="text-xs text-muted-foreground">Saldo</p>
           <p className={`font-semibold ${saldo > 0 ? 'text-warning' : 'text-success'}`}>{formatMoney(saldo)}</p>
@@ -196,6 +213,7 @@ function FilaDetalle({ id }: { id: string }) {
               <tr>
                 <th className="px-3 py-2 text-left font-medium">Movimiento</th>
                 <th className="px-3 py-2 text-right font-medium">Monto cobrado</th>
+                <th className="px-3 py-2 text-right font-medium">Retencion</th>
                 <th className="px-3 py-2 text-left font-medium">Notas</th>
               </tr>
             </thead>
@@ -204,7 +222,10 @@ function FilaDetalle({ id }: { id: string }) {
                 <tr key={v.id} className="hover:bg-surface-2/50">
                   <td className="px-3 py-2 text-muted-foreground font-mono">{v.movimiento_id.slice(0, 8)}…</td>
                   <td className="px-3 py-2 text-right text-white">{formatMoney(v.monto_aplicado)}</td>
-                  <td className="px-3 py-2 text-muted-foreground">{v.notas ?? '—'}</td>
+                  <td className="px-3 py-2 text-right text-warning">
+                    {obtenerRetencionGanancias(v) > 0 ? formatMoney(obtenerRetencionGanancias(v)) : '—'}
+                  </td>
+                  <td className="px-3 py-2 text-muted-foreground">{limpiarNotaRetencion(v.notas) || '—'}</td>
                 </tr>
               ))}
             </tbody>

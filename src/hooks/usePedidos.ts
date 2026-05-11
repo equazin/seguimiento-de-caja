@@ -1,7 +1,7 @@
 import { supabase } from '@/db/schema'
 import type { EstadoPedidoCompra, EstadoPedidoVenta, MovimientoVinculo, PedidoCompra, PedidoVenta } from '@/db/schema'
 import { notifyDataChanged, useSupabaseQuery } from '@/hooks/useSupabaseQuery'
-import { calcularEstadoCompra, calcularEstadoVenta } from '@/lib/vinculos'
+import { calcularEstadoCompra, calcularEstadoVenta, montoCanceladoVinculo } from '@/lib/vinculos'
 import { v4 as uuidv4 } from 'uuid'
 
 type TablaPedidos = 'pedidos_compra' | 'pedidos_venta'
@@ -303,7 +303,7 @@ export async function recalcularEstadoPedido(id: string, tipo: 'compra' | 'venta
 
   const [{ data: pedido }, { data: vinculos }] = await Promise.all([
     supabase.from(tabla).select('*').eq('id', id).maybeSingle(),
-    supabase.from('movimiento_vinculos').select('monto_aplicado').eq(fk, id),
+    supabase.from('movimiento_vinculos').select('monto_aplicado,notas').eq(fk, id),
   ])
 
   if (!pedido || pedido.estado === 'cancelado') return
@@ -330,13 +330,13 @@ export async function getTopPedidosPendientes() {
 
   const compras = (comprasRes.data ?? []).map(p => {
     const pvinculos = vinculos.filter(v => v.pedido_compra_id === p.id)
-    const totalPagado = pvinculos.reduce((s, v) => s + v.monto_aplicado, 0)
+    const totalPagado = pvinculos.reduce((s, v) => s + montoCanceladoVinculo(v), 0)
     return { ...p, saldo_pendiente: Math.max(0, p.monto_total - totalPagado) }
   }).sort((a, b) => b.saldo_pendiente - a.saldo_pendiente).slice(0, 5)
 
   const ventas = (ventasRes.data ?? []).map(p => {
     const pvinculos = vinculos.filter(v => v.pedido_venta_id === p.id)
-    const totalCobrado = pvinculos.reduce((s, v) => s + v.monto_aplicado, 0)
+    const totalCobrado = pvinculos.reduce((s, v) => s + montoCanceladoVinculo(v), 0)
     return { ...p, saldo_pendiente: Math.max(0, p.monto_total - totalCobrado) }
   }).sort((a, b) => b.saldo_pendiente - a.saldo_pendiente).slice(0, 5)
 

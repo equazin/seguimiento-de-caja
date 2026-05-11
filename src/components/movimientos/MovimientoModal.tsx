@@ -8,7 +8,12 @@ import { useCuentas } from '@/hooks/useCuentas'
 import { crearMovimiento, actualizarMovimiento } from '@/hooks/useMovimientos'
 import { usePedidosCompra, usePedidosVenta, reemplazarVinculosMovimiento, useVinculos } from '@/hooks/usePedidos'
 import { getContactosUsados } from '@/db/queries'
-import { validarVinculos } from '@/lib/vinculos'
+import {
+  limpiarNotaRetencion,
+  obtenerRetencionGanancias,
+  serializarNotaRetencion,
+  validarVinculos,
+} from '@/lib/vinculos'
 import { METODOS_PAGO } from '@/lib/constants'
 import { todayStr, formatMoney } from '@/lib/formatters'
 import { toast } from 'sonner'
@@ -39,6 +44,7 @@ interface VinculoForm {
   pedido_compra_id: string | null
   pedido_venta_id: string | null
   monto_aplicado: string
+  retencion_ganancias: string
   notas: string
 }
 
@@ -61,6 +67,7 @@ const VINCULO_VACIO: VinculoForm = {
   pedido_compra_id: null,
   pedido_venta_id: null,
   monto_aplicado: '',
+  retencion_ganancias: '',
   notas: '',
 }
 
@@ -93,6 +100,7 @@ function VinculosSection({ tipo, montoTotal, vinculos, onChange, busqueda, onBus
 
   const validacion = validarVinculos(montoTotal, vinculos.map(v => ({ monto_aplicado: Number(v.monto_aplicado) || 0 })))
   const sumaVinculos = vinculos.reduce((s, v) => s + (Number(v.monto_aplicado) || 0), 0)
+  const sumaRetenciones = vinculos.reduce((s, v) => s + (Number(v.retencion_ganancias) || 0), 0)
 
   return (
     <div className="space-y-3">
@@ -138,7 +146,7 @@ function VinculosSection({ tipo, montoTotal, vinculos, onChange, busqueda, onBus
                   <Trash2 size={14} />
                 </button>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <Input
                   label="Monto aplicado"
                   type="number"
@@ -148,6 +156,17 @@ function VinculosSection({ tipo, montoTotal, vinculos, onChange, busqueda, onBus
                   value={v.monto_aplicado}
                   onChange={e => actualizarVinculo(i, 'monto_aplicado', e.target.value)}
                 />
+                {tipo === 'ingreso' && (
+                  <Input
+                    label="Retencion ganancias"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={v.retencion_ganancias}
+                    onChange={e => actualizarVinculo(i, 'retencion_ganancias', e.target.value)}
+                  />
+                )}
                 <Input
                   label="Notas (opcional)"
                   placeholder="Referencia, cuota, etc."
@@ -163,6 +182,9 @@ function VinculosSection({ tipo, montoTotal, vinculos, onChange, busqueda, onBus
               Suma vinculada: <span className="text-white font-semibold">{formatMoney(sumaVinculos)}</span>
               {' '}/{' '}
               <span className="text-muted-foreground">{formatMoney(montoTotal)}</span>
+              {sumaRetenciones > 0 && (
+                <span className="text-warning"> + retenciones {formatMoney(sumaRetenciones)}</span>
+              )}
             </span>
             {!validacion.valido && (
               <span className="text-danger">{validacion.error}</span>
@@ -237,7 +259,8 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
         pedido_compra_id: v.pedido_compra_id ?? null,
         pedido_venta_id: v.pedido_venta_id ?? null,
         monto_aplicado: String(v.monto_aplicado),
-        notas: v.notas ?? '',
+        retencion_ganancias: obtenerRetencionGanancias(v) > 0 ? String(obtenerRetencionGanancias(v)) : '',
+        notas: limpiarNotaRetencion(v.notas),
       })))
     }
   }, [vinculosExistentes, mostrarVinculos])
@@ -284,6 +307,14 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
         toast.error(validacion.error)
         return
       }
+      const retencionInvalida = vinculosForm.some(v => {
+        const value = Number(v.retencion_ganancias)
+        return v.retencion_ganancias.trim() && (!Number.isFinite(value) || value < 0)
+      })
+      if (retencionInvalida) {
+        toast.error('La retencion de ganancias debe ser mayor o igual a cero')
+        return
+      }
     }
 
     setLoading(true)
@@ -316,12 +347,18 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
 
       if (mostrarVinculos) {
         const nuevosVinculos = vinculosForm
-          .filter(v => (v.pedido_compra_id || v.pedido_venta_id) && Number(v.monto_aplicado) > 0)
+          .filter(v => (
+            v.pedido_compra_id ||
+            v.pedido_venta_id
+          ) && (Number(v.monto_aplicado) > 0 || Number(v.retencion_ganancias) > 0))
           .map(v => ({
             pedido_compra_id: v.pedido_compra_id,
             pedido_venta_id: v.pedido_venta_id,
             monto_aplicado: Number(v.monto_aplicado),
-            notas: v.notas.trim() || null,
+            notas: serializarNotaRetencion(
+              v.notas.trim() || null,
+              Number(v.retencion_ganancias) || 0
+            ),
           }))
         await reemplazarVinculosMovimiento(movimientoId, nuevosVinculos)
       }
