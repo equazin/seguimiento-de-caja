@@ -50,6 +50,7 @@ interface FormState {
   cantidad: string
   precio_unitario_usd: string
   alicuota_iva: string
+  margen_porcentaje: string
   tipo_cambio: string
   descripcion: string
   notas: string
@@ -67,6 +68,7 @@ const INITIAL_FORM: FormState = {
   cantidad: '1',
   precio_unitario_usd: '',
   alicuota_iva: '21',
+  margen_porcentaje: '',
   tipo_cambio: '',
   descripcion: '',
   notas: '',
@@ -117,6 +119,44 @@ function normalizarItemsPedido(items: PedidoItem[] | null | undefined): PedidoIt
     iva_importe: Number(item.iva_importe) || 0,
     total: Number(item.total) || 0,
   }))
+}
+
+function parsePorcentaje(value: string): number {
+  if (!value.trim()) return 0
+  const porcentaje = Number(value.replace(',', '.'))
+  return Number.isFinite(porcentaje) ? Math.max(0, porcentaje) : 0
+}
+
+function formatPorcentaje(value: number): string {
+  const rounded = Math.round(value * 100) / 100
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2)
+}
+
+function totalItemsUsd(items: PedidoItem[]): number {
+  return round2(items.reduce((acc, item) => acc + Number(item.total ?? 0), 0))
+}
+
+function margenDesdePedido(pedido: PedidoVenta, items: PedidoItem[]): string {
+  const baseUsd = totalItemsUsd(items)
+  const totalUsd = Number(pedido.monto_total_usd ?? 0) > 0
+    ? Number(pedido.monto_total_usd)
+    : Number(pedido.tipo_cambio ?? 0) > 0
+      ? round2(Number(pedido.monto_total ?? 0) / Number(pedido.tipo_cambio))
+      : 0
+  const margenUsd = round2(totalUsd - baseUsd)
+  if (baseUsd <= 0 || margenUsd <= 0) return ''
+  return formatPorcentaje((margenUsd / baseUsd) * 100)
+}
+
+function margenDesdePresupuesto(documento: Documento): string {
+  const margen = documento.percepciones_usd != null
+    ? Number(documento.percepciones_usd)
+    : Number(documento.percepciones ?? 0)
+  const base = documento.subtotal_usd != null && documento.iva_total_usd != null
+    ? Number(documento.subtotal_usd) + Number(documento.iva_total_usd)
+    : Number(documento.subtotal ?? 0) + Number(documento.iva_total ?? 0)
+  if (!Number.isFinite(margen) || !Number.isFinite(base) || margen <= 0 || base <= 0) return ''
+  return formatPorcentaje((margen / base) * 100)
 }
 
 // ─── Sub-componente: fila expandible ─────────────────────────────────────────
@@ -226,6 +266,7 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
         cantidad: String(item?.cantidad ?? 1),
         precio_unitario_usd: String(item?.precio_unitario ?? (precioFallback || '')),
         alicuota_iva: String(item?.alicuota_iva ?? ivaFallback),
+        margen_porcentaje: margenDesdePedido(pedido, itemsPedido),
         tipo_cambio: tcPedido != null ? String(tcPedido) : String(cotizacionGlobal || ''),
         descripcion: item?.descripcion ?? pedido.descripcion ?? '',
         notas: pedido.notas ?? '',
@@ -315,6 +356,7 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
     const itemsPedido = items.map(item => itemDraftToPedidoItem(item, tcDocumento, documento.moneda))
     const primerItem = itemsPedido[0]
     const cliente = contactoId ? clientes.find(c => c.id === contactoId) : null
+    const margenPresupuesto = margenDesdePresupuesto(documento)
     const descripcion = itemsPedido.length > 1
       ? `Presupuesto ${documento.numero_interno} (${itemsPedido.length} items)`
       : primerItem?.descripcion ?? `Presupuesto ${documento.numero_interno}`
@@ -329,6 +371,7 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
       cantidad: String(primerItem?.cantidad ?? 1),
       precio_unitario_usd: primerItem ? String(primerItem.precio_unitario) : '',
       alicuota_iva: String(primerItem?.alicuota_iva ?? 0),
+      margen_porcentaje: margenPresupuesto,
       tipo_cambio: String(tcDocumento),
       descripcion,
       notas: f.notas.trim()
@@ -358,6 +401,7 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
   const cantidadNum = Number(form.cantidad.replace(',', '.'))
   const precioUnitarioNum = Number(form.precio_unitario_usd.replace(',', '.'))
   const ivaNum = Number(form.alicuota_iva)
+  const margenNum = parsePorcentaje(form.margen_porcentaje)
   const tcNum = Number(form.tipo_cambio.replace(',', '.'))
   const itemsImportados = form.items_importados ?? []
   const hayItemsImportados = itemsImportados.length > 0
@@ -372,9 +416,11 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
   const ivaUsd = hayItemsImportados
     ? round2(itemsImportados.reduce((acc, item) => acc + Number(item.iva_importe ?? 0), 0))
     : ivaManualUsd
-  const totalUsd = hayItemsImportados
+  const totalBaseUsd = hayItemsImportados
     ? round2(itemsImportados.reduce((acc, item) => acc + Number(item.total ?? 0), 0))
     : round2(subtotalManualUsd + ivaManualUsd)
+  const margenUsd = round2(totalBaseUsd * margenNum / 100)
+  const totalUsd = round2(totalBaseUsd + margenUsd)
   const arsCalculado =
     totalUsd > 0 && Number.isFinite(tcNum) && tcNum > 0
       ? round2(totalUsd * tcNum)
@@ -387,6 +433,9 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
     if (!hayItemsImportados && (!Number.isFinite(cantidadNum) || cantidadNum <= 0)) errs.cantidad = 'Cantidad invalida'
     if (!hayItemsImportados && (!Number.isFinite(precioUnitarioNum) || precioUnitarioNum < 0)) errs.precio_unitario_usd = 'Precio invalido'
     if (!hayItemsImportados && (!Number.isFinite(ivaNum) || ivaNum < 0)) errs.alicuota_iva = 'IVA invalido'
+    if (form.margen_porcentaje.trim() && (!Number.isFinite(Number(form.margen_porcentaje.replace(',', '.'))) || Number(form.margen_porcentaje.replace(',', '.')) < 0)) {
+      errs.margen_porcentaje = 'Margen invalido'
+    }
     if (totalUsd <= 0) errs.precio_unitario_usd = 'El total debe ser mayor a cero'
     if (!Number.isFinite(tcNum) || tcNum <= 0) errs.tipo_cambio = 'Tipo de cambio inválido'
     setErrors(errs)
@@ -564,7 +613,7 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
             value={form.precio_unitario_usd}
             onChange={e => set('precio_unitario_usd', e.target.value)}
             error={errors.precio_unitario_usd}
-            hint={`Total ${formatMoney(totalUsd, 'USD')} con IVA`}
+            hint={`Total ${formatMoney(totalBaseUsd, 'USD')} con IVA`}
             disabled={hayItemsImportados}
             required
           />
@@ -602,11 +651,23 @@ function PedidoVentaModal({ open, onClose, pedido }: ModalProps) {
           value={form.descripcion}
           onChange={e => set('descripcion', e.target.value)}
         />
+        <Input
+          label="Margen"
+          type="number"
+          min="0"
+          step="0.01"
+          placeholder="0"
+          value={form.margen_porcentaje}
+          onChange={e => set('margen_porcentaje', e.target.value)}
+          error={errors.margen_porcentaje}
+          hint={margenUsd > 0 ? `Suma ${formatMoney(margenUsd, 'USD')}` : 'Opcional'}
+        />
         <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total calculado</p>
           <p className="mt-1 font-semibold text-white">{formatMoney(totalUsd, 'USD')}</p>
           <p className="text-xs text-muted-foreground">
             Neto {formatMoney(subtotalUsd, 'USD')} + IVA {formatMoney(ivaUsd, 'USD')}
+            {margenUsd > 0 && ` + Margen ${formatMoney(margenUsd, 'USD')}`}
           </p>
           {arsCalculado > 0 && (
             <p className="text-xs text-muted-foreground">ARS {formatMoney(arsCalculado)}</p>
