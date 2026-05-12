@@ -58,13 +58,15 @@ export function calcularEstadoVenta(
 
 export function validarVinculos(
   montoMovimiento: number,
-  vinculos: { monto_aplicado: number }[]
+  vinculos: { monto_aplicado: number }[],
+  moneda: 'ARS' | 'USD' = 'ARS'
 ): { valido: boolean; error?: string } {
   const suma = vinculos.reduce((s, v) => s + (v.monto_aplicado || 0), 0)
+  const simbolo = moneda === 'USD' ? 'USD ' : '$'
   if (suma > montoMovimiento) {
     return {
       valido: false,
-      error: `La suma de montos aplicados ($${suma.toLocaleString('es-AR')}) supera el monto del movimiento ($${montoMovimiento.toLocaleString('es-AR')})`,
+      error: `La suma de montos aplicados (${simbolo}${suma.toLocaleString('es-AR')}) supera el monto del movimiento (${simbolo}${montoMovimiento.toLocaleString('es-AR')})`,
     }
   }
   return { valido: true }

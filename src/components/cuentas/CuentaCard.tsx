@@ -1,4 +1,4 @@
-import { Banknote, Smartphone, Building2, Edit2, Power } from 'lucide-react'
+import { Banknote, Smartphone, Building2, Edit2, Power, Lock } from 'lucide-react'
 import { formatMoney } from '@/lib/formatters'
 import { cn } from '@/lib/formatters'
 import type { Cuenta } from '@/db/schema'
@@ -24,6 +24,7 @@ interface Props {
 export function CuentaCard({ cuenta, onEdit, onDesactivar }: Props) {
   const Icon = TIPO_ICONS[cuenta.tipo]
   const color = TIPO_COLORS[cuenta.tipo]
+  const esSistema = cuenta.sistema === true
 
   return (
     <div className="rounded-xl border border-border bg-surface/90 p-5 shadow-xl shadow-black/10 transition-colors hover:border-primary/30">
@@ -33,22 +34,27 @@ export function CuentaCard({ cuenta, onEdit, onDesactivar }: Props) {
             <Icon size={18} style={{ color }} />
           </div>
           <div>
-            <p className="text-sm font-semibold text-white">{cuenta.nombre}</p>
+            <p className="text-sm font-semibold text-white flex items-center gap-1.5">
+              {cuenta.nombre}
+              {esSistema && <Lock size={11} className="text-muted-foreground" />}
+            </p>
             <p className="text-xs text-muted-foreground capitalize">{cuenta.tipo} · {cuenta.moneda}</p>
           </div>
         </div>
         <div className="flex gap-1">
           <button
             onClick={onEdit}
-            className="p-1.5 rounded text-muted-foreground hover:text-white hover:bg-surface-2 transition-colors"
-            title="Editar"
+            disabled={esSistema}
+            className="p-1.5 rounded text-muted-foreground hover:text-white hover:bg-surface-2 transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+            title={esSistema ? 'Cuenta del sistema (no editable)' : 'Editar'}
           >
             <Edit2 size={13} />
           </button>
           <button
             onClick={onDesactivar}
-            className="p-1.5 rounded text-muted-foreground hover:text-danger hover:bg-danger/10 transition-colors"
-            title="Desactivar"
+            disabled={esSistema}
+            className="p-1.5 rounded text-muted-foreground hover:text-danger hover:bg-danger/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+            title={esSistema ? 'Cuenta del sistema (no desactivable)' : 'Desactivar'}
           >
             <Power size={13} />
           </button>

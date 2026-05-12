@@ -19,6 +19,7 @@ export type Movimiento = {
   monto_ars: number
   monto_usd?: number | null
   tipo_cambio?: number | null
+  moneda_principal: MonedaCuenta
   categoria_id: string
   subcategoria?: string | null
   descripcion: string
@@ -46,6 +47,7 @@ export type Cuenta = {
   moneda: MonedaCuenta
   saldo_inicial: number
   activa: boolean
+  sistema?: boolean
 }
 
 export type Configuracion = {

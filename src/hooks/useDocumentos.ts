@@ -964,6 +964,7 @@ async function syncCajaDocumento(
     monto_ars: montoArs,
     monto_usd: montoUsd,
     tipo_cambio: documento.moneda === 'USD' ? Number(documento.tipo_cambio || 1) : null,
+    moneda_principal: documento.moneda,
     categoria_id: categoriaId,
     subcategoria: 'Documentos',
     descripcion,

@@ -19,7 +19,7 @@ async function clearAllTables() {
 export async function getSaldoCuenta(cuentaId: string): Promise<number> {
   const { data: cuenta } = await supabase
     .from('cuentas')
-    .select('saldo_inicial')
+    .select('saldo_inicial, moneda')
     .eq('id', cuentaId)
     .maybeSingle()
 
@@ -27,21 +27,54 @@ export async function getSaldoCuenta(cuentaId: string): Promise<number> {
 
   const { data: movimientos } = await supabase
     .from('movimientos')
-    .select('tipo, monto_ars')
+    .select('tipo, monto_ars, monto_usd, moneda_principal')
     .eq('cuenta_id', cuentaId)
 
   if (!movimientos) return cuenta.saldo_inicial
 
-  const totalIngresos = movimientos.filter(m => m.tipo === 'ingreso').reduce((s, m) => s + m.monto_ars, 0)
-  const totalEgresos = movimientos.filter(m => m.tipo === 'egreso').reduce((s, m) => s + m.monto_ars, 0)
+  const esUsd = cuenta.moneda === 'USD'
+  const valor = (m: { monto_ars: number; monto_usd?: number | null }) =>
+    esUsd ? Number(m.monto_usd ?? 0) : Number(m.monto_ars ?? 0)
+
+  const totalIngresos = movimientos.filter(m => m.tipo === 'ingreso').reduce((s, m) => s + valor(m), 0)
+  const totalEgresos = movimientos.filter(m => m.tipo === 'egreso').reduce((s, m) => s + valor(m), 0)
   return cuenta.saldo_inicial + totalIngresos - totalEgresos
 }
 
 export async function getSaldoTotalARS(): Promise<number> {
-  const { data: cuentas } = await supabase.from('cuentas').select('id').eq('activa', true)
+  const { data: cuentas } = await supabase.from('cuentas').select('id, moneda').eq('activa', true)
   if (!cuentas) return 0
-  const saldos = await Promise.all(cuentas.map(c => getSaldoCuenta(c.id)))
+  const cuentasArs = cuentas.filter(c => c.moneda === 'ARS')
+  const saldos = await Promise.all(cuentasArs.map(c => getSaldoCuenta(c.id)))
   return saldos.reduce((s, v) => s + v, 0)
+}
+
+export async function getSaldoTotalUSD(): Promise<number> {
+  const { data: cuentas } = await supabase.from('cuentas').select('id, moneda').eq('activa', true)
+  if (!cuentas) return 0
+  const cuentasUsd = cuentas.filter(c => c.moneda === 'USD')
+  const saldos = await Promise.all(cuentasUsd.map(c => getSaldoCuenta(c.id)))
+  return saldos.reduce((s, v) => s + v, 0)
+}
+
+export async function getCotizacionUSD(): Promise<number> {
+  const valor = await getConfiguracion('cotizacion_usd')
+  const num = Number(valor)
+  return Number.isFinite(num) && num > 0 ? num : 0
+}
+
+export async function getSaldoTotalConsolidadoARS(): Promise<{ ars: number; usd: number; consolidado: number; cotizacion: number }> {
+  const [ars, usd, cotizacion] = await Promise.all([
+    getSaldoTotalARS(),
+    getSaldoTotalUSD(),
+    getCotizacionUSD(),
+  ])
+  return {
+    ars,
+    usd,
+    cotizacion,
+    consolidado: ars + (cotizacion > 0 ? usd * cotizacion : 0),
+  }
 }
 
 export async function getMovimientosByMes(anio: number, mes: number): Promise<Movimiento[]> {
@@ -59,8 +92,9 @@ export async function getMovimientosByMes(anio: number, mes: number): Promise<Mo
 
 export async function getResumenMensual(anio: number, mes: number) {
   const movimientos = await getMovimientosByMes(anio, mes)
-  const ingresos = movimientos.filter(m => m.tipo === 'ingreso').reduce((s, m) => s + m.monto_ars, 0)
-  const egresos = movimientos.filter(m => m.tipo === 'egreso').reduce((s, m) => s + m.monto_ars, 0)
+  const arsOnly = movimientos.filter(m => (m.moneda_principal ?? 'ARS') === 'ARS')
+  const ingresos = arsOnly.filter(m => m.tipo === 'ingreso').reduce((s, m) => s + m.monto_ars, 0)
+  const egresos = arsOnly.filter(m => m.tipo === 'egreso').reduce((s, m) => s + m.monto_ars, 0)
   return { ingresos, egresos, resultado: ingresos - egresos, movimientos }
 }
 
@@ -69,10 +103,12 @@ export async function getEgresosPorCategoria(anio: number, mes: number) {
   const { data: categorias } = await supabase.from('categorias').select('*')
 
   const mapa = new Map<string, number>()
-  movimientos.filter(m => m.tipo === 'egreso').forEach(m => {
-    if (!m.categoria_id) return
-    mapa.set(m.categoria_id, (mapa.get(m.categoria_id) ?? 0) + m.monto_ars)
-  })
+  movimientos
+    .filter(m => m.tipo === 'egreso' && (m.moneda_principal ?? 'ARS') === 'ARS')
+    .forEach(m => {
+      if (!m.categoria_id) return
+      mapa.set(m.categoria_id, (mapa.get(m.categoria_id) ?? 0) + m.monto_ars)
+    })
 
   return Array.from(mapa.entries()).map(([catId, total]) => {
     const cat = (categorias ?? []).find(c => c.id === catId)
@@ -167,7 +203,10 @@ export async function getSaldoAcumuladoUltimos30Dias() {
   const hace30 = new Date(hoy)
   hace30.setDate(hace30.getDate() - 30)
 
-  const { data: todos } = await supabase.from('movimientos').select('fecha, tipo, monto_ars')
+  const { data: todos } = await supabase
+    .from('movimientos')
+    .select('fecha, tipo, monto_ars, moneda_principal')
+  const arsOnly = (todos ?? []).filter(m => (m.moneda_principal ?? 'ARS') === 'ARS')
   const saldoTotal = await getSaldoTotalARS()
 
   const resultado: { fecha: string; saldo: number }[] = []
@@ -177,7 +216,7 @@ export async function getSaldoAcumuladoUltimos30Dias() {
     const fecha = new Date(hoy)
     fecha.setDate(fecha.getDate() - i)
     const fechaStr = fecha.toISOString().split('T')[0]
-    const del_dia = (todos ?? []).filter(m => m.fecha === fechaStr)
+    const del_dia = arsOnly.filter(m => m.fecha === fechaStr)
     const ing = del_dia.filter(m => m.tipo === 'ingreso').reduce((s, m) => s + m.monto_ars, 0)
     const egr = del_dia.filter(m => m.tipo === 'egreso').reduce((s, m) => s + m.monto_ars, 0)
     if (i === 30) saldoAcum = saldoTotal - ing + egr

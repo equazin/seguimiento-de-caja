@@ -1,6 +1,8 @@
 import {
   getResumenMensual,
   getSaldoTotalARS,
+  getSaldoTotalUSD,
+  getCotizacionUSD,
   getEgresosPorCategoria,
   getIngresosEgresosPorMes,
   getSaldoAcumuladoUltimos30Dias,
@@ -16,27 +18,40 @@ export function useDashboard() {
     const anioAnterior = fechaAnterior.getFullYear()
     const mesAnterior = fechaAnterior.getMonth() + 1
 
-    const [resumen, resumenAnterior, saldoTotal, egresosCat, chartMeses, chartSaldo] = await Promise.all([
+    const [
+      resumen,
+      resumenAnterior,
+      saldoArs,
+      saldoUsd,
+      cotizacion,
+      egresosCat,
+      chartMeses,
+      chartSaldo,
+    ] = await Promise.all([
       getResumenMensual(anio, mes),
       getResumenMensual(anioAnterior, mesAnterior),
       getSaldoTotalARS(),
+      getSaldoTotalUSD(),
+      getCotizacionUSD(),
       getEgresosPorCategoria(anio, mes),
       getIngresosEgresosPorMes(6),
       getSaldoAcumuladoUltimos30Dias(),
     ])
 
-    // saldoHace30Dias = saldoTotal actual menos el resultado neto del mes en curso
-    // (aproximación simple, evita una query extra)
-    const saldoHace30Dias = saldoTotal - resumen.resultado
+    const saldoConsolidado = saldoArs + (cotizacion > 0 ? saldoUsd * cotizacion : 0)
+    const saldoHace30Dias = saldoConsolidado - resumen.resultado
 
     return {
       resumenMes: resumen,
       resumenMesAnterior: resumenAnterior,
-      saldoTotal,
+      saldoTotal: saldoConsolidado,
+      saldoArs,
+      saldoUsd,
+      cotizacionUsd: cotizacion,
       saldoHace30Dias,
       egresosPorCategoria: egresosCat,
       chartMeses,
       chartSaldo,
     }
-  }, [], ['movimientos', 'cuentas', 'categorias'])
+  }, [], ['movimientos', 'cuentas', 'categorias', 'configuracion'])
 }

@@ -141,38 +141,41 @@ export function Dashboard({ onEditMovimiento }: Props) {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard
-          titulo="Saldo total"
-          valor={data.saldoTotal}
+          titulo="Saldo ARS"
+          valor={data.saldoArs}
           icono={Wallet}
           variante="default"
-          subtitulo="Suma de todas las cuentas"
+          subtitulo="Cuentas en pesos"
+          moneda="ARS"
+        />
+        <KPICard
+          titulo="Saldo USD"
+          valor={data.saldoUsd}
+          icono={Wallet}
+          variante="default"
+          subtitulo={data.cotizacionUsd > 0
+            ? `≈ ${formatMoney(data.saldoUsd * data.cotizacionUsd, 'ARS')} @ ${formatMoney(data.cotizacionUsd, 'ARS')}`
+            : 'Sin cotización configurada'}
+          moneda="USD"
+        />
+        <KPICard
+          titulo="Saldo total (ARS)"
+          valor={data.saldoTotal}
+          icono={Activity}
+          variante="neutral"
+          subtitulo="Consolidado ARS + USD"
+          moneda="ARS"
           delta={{
             valorAnterior: data.saldoHace30Dias,
             labelComparacion: 'vs hace 30 días',
           }}
         />
         <KPICard
-          titulo={`Ingresos - ${mesLabel}`}
-          valor={data.resumenMes.ingresos}
-          icono={TrendingUp}
-          variante="ingreso"
-          subtitulo="Mes actual"
-          delta={{ valorAnterior: data.resumenMesAnterior.ingresos }}
-        />
-        <KPICard
-          titulo={`Egresos - ${mesLabel}`}
-          valor={data.resumenMes.egresos}
-          icono={TrendingDown}
-          variante="egreso"
-          subtitulo="Mes actual"
-          delta={{ valorAnterior: data.resumenMesAnterior.egresos, invertirSigno: true }}
-        />
-        <KPICard
-          titulo="Resultado neto"
+          titulo={`Resultado - ${mesLabel}`}
           valor={data.resumenMes.resultado}
-          icono={Activity}
-          variante="neutral"
-          subtitulo={mesLabel}
+          icono={data.resumenMes.resultado >= 0 ? TrendingUp : TrendingDown}
+          variante={data.resumenMes.resultado >= 0 ? 'ingreso' : 'egreso'}
+          subtitulo={`Ing ${formatMoney(data.resumenMes.ingresos)} · Egr ${formatMoney(data.resumenMes.egresos)}`}
           delta={{ valorAnterior: data.resumenMesAnterior.resultado }}
         />
       </div>
@@ -188,9 +191,9 @@ export function Dashboard({ onEditMovimiento }: Props) {
             <div key={c.id} className="min-w-[180px] flex-shrink-0 rounded-lg border border-border bg-surface-2 px-4 py-3">
               <p className="text-xs text-muted-foreground font-medium truncate">{c.nombre}</p>
               <p className={`text-lg font-bold mt-1 ${c.saldo_actual >= 0 ? 'text-white' : 'text-danger'}`}>
-                {formatMoney(c.saldo_actual)}
+                {formatMoney(c.saldo_actual, c.moneda)}
               </p>
-              <p className="text-[10px] text-muted-foreground mt-0.5 capitalize">{c.tipo}</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5 capitalize">{c.tipo} · {c.moneda}</p>
             </div>
           ))}
           </div>

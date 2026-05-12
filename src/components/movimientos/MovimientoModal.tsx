@@ -17,7 +17,7 @@ import {
 import { METODOS_PAGO } from '@/lib/constants'
 import { todayStr, formatMoney } from '@/lib/formatters'
 import { toast } from 'sonner'
-import type { Movimiento, TipoMovimiento, MetodoPago, MovimientoVinculo } from '@/db/schema'
+import type { Movimiento, TipoMovimiento, MetodoPago, MovimientoVinculo, MonedaCuenta } from '@/db/schema'
 
 interface Props {
   open: boolean
@@ -75,6 +75,7 @@ const VINCULO_VACIO: VinculoForm = {
 
 interface VinculosSectionProps {
   tipo: TipoMovimiento
+  moneda: MonedaCuenta
   montoTotal: number
   vinculos: VinculoForm[]
   onChange: (vinculos: VinculoForm[]) => void
@@ -82,7 +83,7 @@ interface VinculosSectionProps {
   onBusquedaChange: (v: string) => void
 }
 
-function VinculosSection({ tipo, montoTotal, vinculos, onChange, busqueda, onBusquedaChange }: VinculosSectionProps) {
+function VinculosSection({ tipo, moneda, montoTotal, vinculos, onChange, busqueda, onBusquedaChange }: VinculosSectionProps) {
   const pedidosCompra = usePedidosCompra(tipo === 'egreso' ? { proveedor: busqueda } : undefined)
   const pedidosVenta = usePedidosVenta(tipo === 'ingreso' ? { cliente: busqueda } : undefined)
 
@@ -98,7 +99,7 @@ function VinculosSection({ tipo, montoTotal, vinculos, onChange, busqueda, onBus
 
   const eliminarVinculo = (i: number) => onChange(vinculos.filter((_, idx) => idx !== i))
 
-  const validacion = validarVinculos(montoTotal, vinculos.map(v => ({ monto_aplicado: Number(v.monto_aplicado) || 0 })))
+  const validacion = validarVinculos(montoTotal, vinculos.map(v => ({ monto_aplicado: Number(v.monto_aplicado) || 0 })), moneda)
   const sumaVinculos = vinculos.reduce((s, v) => s + (Number(v.monto_aplicado) || 0), 0)
   const sumaRetenciones = vinculos.reduce((s, v) => s + (Number(v.retencion_ganancias) || 0), 0)
 
@@ -131,11 +132,16 @@ function VinculosSection({ tipo, montoTotal, vinculos, onChange, busqueda, onBus
                     }}
                   >
                     <option value="">Seleccionar pedido...</option>
-                    {pedidosFiltrados.map(p => (
-                      <option key={p.id} value={p.id}>
-                        {p.numero} — {tipo === 'egreso' ? (p as any).proveedor : (p as any).cliente} ({formatMoney(p.monto_total)})
-                      </option>
-                    ))}
+                    {pedidosFiltrados.map(p => {
+                      const totalPedido = moneda === 'USD' && p.monto_total_usd != null
+                        ? p.monto_total_usd
+                        : p.monto_total
+                      return (
+                        <option key={p.id} value={p.id}>
+                          {p.numero} — {tipo === 'egreso' ? (p as any).proveedor : (p as any).cliente} ({formatMoney(totalPedido, moneda)})
+                        </option>
+                      )
+                    })}
                   </Select>
                 </div>
                 <button
@@ -179,11 +185,11 @@ function VinculosSection({ tipo, montoTotal, vinculos, onChange, busqueda, onBus
 
           <div className="flex items-center justify-between text-xs px-1">
             <span className="text-muted-foreground">
-              Suma vinculada: <span className="text-white font-semibold">{formatMoney(sumaVinculos)}</span>
+              Suma vinculada: <span className="text-white font-semibold">{formatMoney(sumaVinculos, moneda)}</span>
               {' '}/{' '}
-              <span className="text-muted-foreground">{formatMoney(montoTotal)}</span>
+              <span className="text-muted-foreground">{formatMoney(montoTotal, moneda)}</span>
               {sumaRetenciones > 0 && (
-                <span className="text-warning"> + retenciones {formatMoney(sumaRetenciones)}</span>
+                <span className="text-warning"> + retenciones {formatMoney(sumaRetenciones, moneda)}</span>
               )}
             </span>
             {!validacion.valido && (
@@ -220,6 +226,11 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
   const vinculosExistentes = useVinculos(movimiento?.id ?? null)
 
   const categoriasFiltered = categorias?.filter(c => c.tipo === form.tipo) ?? []
+  const cuentaSeleccionada = cuentas?.find(c => c.id === form.cuenta_id)
+  const monedaPrincipal: MonedaCuenta = cuentaSeleccionada?.moneda ?? 'ARS'
+  const esUSD = monedaPrincipal === 'USD'
+  const montoPrincipal = esUSD ? form.monto_usd : form.monto_ars
+  const montoPrincipalNum = Number(montoPrincipal) || 0
 
   useEffect(() => {
     if (!open) return
@@ -285,8 +296,14 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
   const validate = (): boolean => {
     const errs: typeof errors = {}
     if (!form.fecha) errs.fecha = 'Requerido'
-    if (!form.monto_ars || isNaN(Number(form.monto_ars)) || Number(form.monto_ars) <= 0) {
-      errs.monto_ars = 'Monto inválido'
+    if (esUSD) {
+      if (!form.monto_usd || isNaN(Number(form.monto_usd)) || Number(form.monto_usd) <= 0) {
+        errs.monto_usd = 'Monto USD inválido'
+      }
+    } else {
+      if (!form.monto_ars || isNaN(Number(form.monto_ars)) || Number(form.monto_ars) <= 0) {
+        errs.monto_ars = 'Monto inválido'
+      }
     }
     if (!form.descripcion.trim()) errs.descripcion = 'Requerido'
     if (!form.categoria_id) errs.categoria_id = 'Requerido'
@@ -300,9 +317,11 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
     if (!validate()) return
 
     const montoArs = Number(form.monto_ars)
+    const montoUsd = Number(form.monto_usd)
+    const montoBaseVinculos = esUSD ? montoUsd : montoArs
 
     if (mostrarVinculos && vinculosForm.length > 0) {
-      const validacion = validarVinculos(montoArs, vinculosForm.map(v => ({ monto_aplicado: Number(v.monto_aplicado) || 0 })))
+      const validacion = validarVinculos(montoBaseVinculos, vinculosForm.map(v => ({ monto_aplicado: Number(v.monto_aplicado) || 0 })), monedaPrincipal)
       if (!validacion.valido) {
         toast.error(validacion.error)
         return
@@ -322,9 +341,10 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
       const data = {
         fecha: form.fecha,
         tipo: form.tipo,
-        monto_ars: montoArs,
-        monto_usd: form.monto_usd ? Number(form.monto_usd) : undefined,
+        monto_ars: esUSD ? (form.monto_ars ? montoArs : 0) : montoArs,
+        monto_usd: esUSD ? montoUsd : (form.monto_usd ? Number(form.monto_usd) : undefined),
         tipo_cambio: form.tipo_cambio ? Number(form.tipo_cambio) : undefined,
+        moneda_principal: monedaPrincipal,
         categoria_id: form.categoria_id,
         subcategoria: form.subcategoria || undefined,
         descripcion: form.descripcion.trim(),
@@ -414,17 +434,31 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
             error={errors.fecha}
             required
           />
-          <Input
-            label="Monto ARS"
-            type="number"
-            min="0"
-            step="0.01"
-            placeholder="0.00"
-            value={form.monto_ars}
-            onChange={e => set('monto_ars', e.target.value)}
-            error={errors.monto_ars}
-            required
-          />
+          {esUSD ? (
+            <Input
+              label="Monto USD"
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="USD 0.00"
+              value={form.monto_usd}
+              onChange={e => set('monto_usd', e.target.value)}
+              error={errors.monto_usd}
+              required
+            />
+          ) : (
+            <Input
+              label="Monto ARS"
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="0.00"
+              value={form.monto_ars}
+              onChange={e => set('monto_ars', e.target.value)}
+              error={errors.monto_ars}
+              required
+            />
+          )}
         </div>
 
         <Input
@@ -508,17 +542,29 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
           )}
         </div>
 
-        {/* USD opcional */}
+        {/* Conversion opcional segun moneda principal */}
         <div className="grid grid-cols-2 gap-4">
-          <Input
-            label="Monto USD (opcional)"
-            type="number"
-            min="0"
-            step="0.01"
-            placeholder="USD 0.00"
-            value={form.monto_usd}
-            onChange={e => set('monto_usd', e.target.value)}
-          />
+          {esUSD ? (
+            <Input
+              label="Monto ARS (referencia)"
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="0.00"
+              value={form.monto_ars}
+              onChange={e => set('monto_ars', e.target.value)}
+            />
+          ) : (
+            <Input
+              label="Monto USD (opcional)"
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="USD 0.00"
+              value={form.monto_usd}
+              onChange={e => set('monto_usd', e.target.value)}
+            />
+          )}
           <Input
             label="Tipo de cambio"
             type="number"
@@ -558,7 +604,8 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
             <div className="border-t border-border p-4">
               <VinculosSection
                 tipo={form.tipo}
-                montoTotal={Number(form.monto_ars) || 0}
+                moneda={monedaPrincipal}
+                montoTotal={montoPrincipalNum}
                 vinculos={vinculosForm}
                 onChange={setVinculosForm}
                 busqueda={busquedaVinculo}

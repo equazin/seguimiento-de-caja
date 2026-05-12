@@ -39,6 +39,10 @@ export function Cuentas() {
   }
 
   const abrirEditar = (cuenta: Cuenta) => {
+    if (cuenta.sistema) {
+      toast.error('No se puede editar una cuenta del sistema')
+      return
+    }
     setEditando(cuenta)
     setForm({
       nombre: cuenta.nombre,
@@ -174,10 +178,14 @@ export function Cuentas() {
         open={confirmDesactivar !== null}
         onClose={() => setConfirmDesactivar(null)}
         onConfirm={async () => {
-          if (confirmDesactivar) {
-            await desactivarCuenta(confirmDesactivar)
-            toast.success('Cuenta desactivada')
+          if (!confirmDesactivar) return
+          const cuenta = (cuentasConSaldo ?? []).find(c => c.id === confirmDesactivar)
+          if (cuenta?.sistema) {
+            toast.error('No se puede desactivar una cuenta del sistema')
+            return
           }
+          await desactivarCuenta(confirmDesactivar)
+          toast.success('Cuenta desactivada')
         }}
         title="Desactivar cuenta"
         message="¿Desactivar esta cuenta? No aparecerá en los totales pero se conserva el historial."
