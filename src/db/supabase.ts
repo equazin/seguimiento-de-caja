@@ -8,7 +8,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 export type TipoMovimiento = 'ingreso' | 'egreso'
-export type MetodoPago = 'transferencia' | 'mercado_pago' | 'efectivo' | 'debito' | 'credito' | 'cheque' | 'crypto'
+export type MetodoPago = 'transferencia' | 'mercado_pago' | 'efectivo' | 'debito' | 'credito' | 'cheque' | 'echeq' | 'crypto'
 export type TipoCuenta = 'banco' | 'digital' | 'efectivo'
 export type MonedaCuenta = 'ARS' | 'USD'
 
@@ -28,6 +28,10 @@ export type Movimiento = {
   cuenta_id: string
   comprobante_url?: string | null
   notas?: string | null
+  echeq_fecha?: string | null
+  echeq_librador?: string | null
+  echeq_cuenta_destino_id?: string | null
+  echeq_recargo?: number | null
   created_at: string
   updated_at: string
 }
@@ -116,6 +120,22 @@ export type MovimientoVinculo = {
   notas?: string | null
 }
 
+export type EchequEstado = 'pendiente' | 'cobrado' | 'rechazado' | 'anulado'
+
+export type Echeq = {
+  id: string
+  movimiento_id: string
+  fecha: string
+  librador: string
+  numero?: string | null
+  monto: number
+  cuenta_destino_id?: string | null
+  recargo_pct: number
+  estado: EchequEstado
+  notas?: string | null
+  created_at: string
+}
+
 export type Database = {
   public: {
     Tables: {
@@ -159,6 +179,12 @@ export type Database = {
         Row: MovimientoVinculo
         Insert: Omit<MovimientoVinculo, 'id'> & Partial<Pick<MovimientoVinculo, 'id'>>
         Update: Partial<Omit<MovimientoVinculo, 'id'>>
+        Relationships: []
+      }
+      echeqs: {
+        Row: Echeq
+        Insert: Omit<Echeq, 'id' | 'created_at'> & Partial<Pick<Echeq, 'id' | 'created_at'>>
+        Update: Partial<Omit<Echeq, 'id' | 'created_at'>>
         Relationships: []
       }
     }

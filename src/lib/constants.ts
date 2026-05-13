@@ -34,6 +34,7 @@ export const METODOS_PAGO: { value: MetodoPago; label: string; icono: string }[]
   { value: 'debito', label: 'Debito', icono: '\u{1F4B3}' },
   { value: 'credito', label: 'Credito', icono: '\u{1F4B3}' },
   { value: 'cheque', label: 'Cheque', icono: '\u{1F4C4}' },
+  { value: 'echeq', label: 'E-cheq', icono: '\u{1F9FE}' },
   { value: 'crypto', label: 'Crypto', icono: '\u20BF' },
 ]
 

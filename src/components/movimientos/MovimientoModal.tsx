@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { ChevronDown, ChevronUp, Plus, Trash2, Link, Split } from 'lucide-react'
+import { ChevronDown, ChevronUp, Plus, Trash2, Link, Split, Receipt } from 'lucide-react'
 import { v4 as uuidv4 } from 'uuid'
 import { Dialog } from '@/components/ui/Dialog'
 import { Input, Select, Textarea } from '@/components/ui/Input'
@@ -8,6 +8,8 @@ import { useCategorias } from '@/hooks/useCategorias'
 import { useCuentas } from '@/hooks/useCuentas'
 import { crearMovimiento, actualizarMovimiento } from '@/hooks/useMovimientos'
 import { usePedidosCompra, usePedidosVenta, reemplazarVinculosMovimiento, useVinculos } from '@/hooks/usePedidos'
+import { useEcheqs, reemplazarEcheqsMovimiento } from '@/hooks/useEcheqs'
+import type { EchequInput } from '@/hooks/useEcheqs'
 import { getContactosUsados } from '@/db/queries'
 import {
   extraerSplitId,
@@ -42,6 +44,24 @@ interface FormState {
   metodo_pago: MetodoPago
   cuenta_id: string
   notas: string
+}
+
+interface EchequForm {
+  fecha: string
+  librador: string
+  numero: string
+  monto: string
+  cuenta_destino_id: string
+  recargo_pct: string
+}
+
+const ECHEQ_VACIO: EchequForm = {
+  fecha: '',
+  librador: '',
+  numero: '',
+  monto: '',
+  cuenta_destino_id: '',
+  recargo_pct: '',
 }
 
 interface SplitForm {
@@ -239,11 +259,13 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
   const [busquedaVinculo, setBusquedaVinculo] = useState('')
   const [splitActivo, setSplitActivo] = useState(false)
   const [splitForm, setSplitForm] = useState<SplitForm>(SPLIT_INITIAL)
+  const [echeqsForm, setEcheqsForm] = useState<EchequForm[]>([])
   const contactoRef = useRef<HTMLInputElement>(null)
 
   const categorias = useCategorias()
   const cuentas = useCuentas()
   const vinculosExistentes = useVinculos(movimiento?.id ?? null)
+  const echeqsExistentes = useEcheqs(movimiento?.id ?? null)
 
   const categoriasFiltered = categorias?.filter(c => c.tipo === form.tipo) ?? []
   const cuentaSeleccionada = cuentas?.find(c => c.id === form.cuenta_id)
@@ -289,8 +311,23 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
     setBusquedaVinculo('')
     setSplitActivo(false)
     setSplitForm(SPLIT_INITIAL)
+    setEcheqsForm([])
     getContactosUsados().then(setContactosSugeridos)
   }, [open, movimiento])
+
+  // Cargar echeqs existentes al editar
+  useEffect(() => {
+    if (movimiento && echeqsExistentes && echeqsExistentes.length > 0) {
+      setEcheqsForm(echeqsExistentes.map(e => ({
+        fecha: e.fecha,
+        librador: e.librador,
+        numero: e.numero ?? '',
+        monto: String(e.monto),
+        cuenta_destino_id: e.cuenta_destino_id ?? '',
+        recargo_pct: String(e.recargo_pct ?? 0),
+      })))
+    }
+  }, [echeqsExistentes?.length])
 
   // Cargar vínculos existentes al editar
   useEffect(() => {
@@ -360,6 +397,26 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
       }
       if (montoSplitNum <= 0) {
         toast.error('Ingresá el monto de la segunda cuenta')
+        return
+      }
+    }
+
+    if (form.metodo_pago === 'echeq') {
+      if (echeqsForm.length === 0) {
+        toast.error('Agregá al menos un e-cheq')
+        return
+      }
+      for (const [i, e] of echeqsForm.entries()) {
+        if (!e.fecha) { toast.error(`E-cheq #${i + 1}: falta la fecha`); return }
+        if (!e.librador.trim()) { toast.error(`E-cheq #${i + 1}: falta el librador`); return }
+        const monto = Number(e.monto)
+        if (!Number.isFinite(monto) || monto <= 0) { toast.error(`E-cheq #${i + 1}: monto inválido`); return }
+        const rec = Number(e.recargo_pct)
+        if (e.recargo_pct && (!Number.isFinite(rec) || rec < 0)) { toast.error(`E-cheq #${i + 1}: recargo inválido`); return }
+      }
+      const sumaEcheqs = echeqsForm.reduce((s, e) => s + (Number(e.monto) || 0), 0)
+      if (Math.abs(sumaEcheqs - montoPrincipalNum) > 0.01) {
+        toast.error(`La suma de los e-cheqs (${sumaEcheqs.toFixed(2)}) no coincide con el monto del movimiento (${montoPrincipalNum.toFixed(2)})`)
         return
       }
     }
@@ -467,9 +524,29 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
         }
       }
 
+      // Guardar e-cheqs si el metodo de pago es echeq
+      if (form.metodo_pago === 'echeq') {
+        const filas: EchequInput[] = echeqsForm.map(e => ({
+          fecha: e.fecha,
+          librador: e.librador.trim(),
+          numero: e.numero.trim() || null,
+          monto: Number(e.monto),
+          cuenta_destino_id: e.cuenta_destino_id || null,
+          recargo_pct: Number(e.recargo_pct) || 0,
+          estado: 'pendiente',
+          notas: null,
+        }))
+        await reemplazarEcheqsMovimiento(movimientoId, filas)
+      } else if (movimiento) {
+        // Si cambia a otro metodo, limpiar echeqs anteriores
+        await reemplazarEcheqsMovimiento(movimientoId, [])
+      }
+
       onClose()
-    } catch {
-      toast.error('Error al guardar')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error al guardar'
+      console.error('MovimientoModal submit error', err)
+      toast.error(msg)
     } finally {
       setLoading(false)
     }
@@ -667,6 +744,125 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
             Este movimiento es parte de un pago dividido. La división se edita eliminando ambos movimientos.
           </div>
         )}
+
+        {/* Lista de E-cheqs */}
+        {form.metodo_pago === 'echeq' && (() => {
+          const sumaEcheqs = echeqsForm.reduce((s, e) => s + (Number(e.monto) || 0), 0)
+          const diferencia = montoPrincipalNum - sumaEcheqs
+          const sumaCalza = Math.abs(diferencia) < 0.01
+          return (
+            <div className="rounded-lg border border-warning/30 bg-warning/5 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm font-semibold text-warning">
+                  <Receipt size={14} />
+                  E-cheqs ({echeqsForm.length})
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setEcheqsForm(prev => [...prev, { ...ECHEQ_VACIO }])}
+                >
+                  <Plus size={12} /> Agregar e-cheq
+                </Button>
+              </div>
+
+              {echeqsForm.length === 0 && (
+                <p className="text-xs text-muted-foreground italic">
+                  Hacé clic en "Agregar e-cheq" para cargar al menos un cheque.
+                </p>
+              )}
+
+              {echeqsForm.map((e, i) => (
+                <div key={i} className="rounded-lg border border-border bg-surface-2 p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-muted-foreground">E-cheq #{i + 1}</span>
+                    <button
+                      type="button"
+                      onClick={() => setEcheqsForm(prev => prev.filter((_, idx) => idx !== i))}
+                      className="text-muted-foreground hover:text-danger transition-colors"
+                      title="Eliminar"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input
+                      label="Fecha de pago"
+                      type="date"
+                      value={e.fecha}
+                      onChange={ev => setEcheqsForm(prev => prev.map((x, idx) => idx === i ? { ...x, fecha: ev.target.value } : x))}
+                      required
+                    />
+                    <Input
+                      label="Librador"
+                      placeholder="Quien emite"
+                      value={e.librador}
+                      onChange={ev => setEcheqsForm(prev => prev.map((x, idx) => idx === i ? { ...x, librador: ev.target.value } : x))}
+                      required
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input
+                      label="Número (opcional)"
+                      placeholder="Ej: 12345678"
+                      value={e.numero}
+                      onChange={ev => setEcheqsForm(prev => prev.map((x, idx) => idx === i ? { ...x, numero: ev.target.value } : x))}
+                    />
+                    <Input
+                      label={`Monto (${monedaPrincipal})`}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={e.monto}
+                      onChange={ev => setEcheqsForm(prev => prev.map((x, idx) => idx === i ? { ...x, monto: ev.target.value } : x))}
+                      required
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Select
+                      label="Cuenta destino (opcional)"
+                      value={e.cuenta_destino_id}
+                      onChange={ev => setEcheqsForm(prev => prev.map((x, idx) => idx === i ? { ...x, cuenta_destino_id: ev.target.value } : x))}
+                    >
+                      <option value="">— Sin depositar —</option>
+                      {cuentas?.map(c => (
+                        <option key={c.id} value={c.id}>{c.nombre} ({c.moneda})</option>
+                      ))}
+                    </Select>
+                    <Input
+                      label="Recargo (%)"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={e.recargo_pct}
+                      onChange={ev => setEcheqsForm(prev => prev.map((x, idx) => idx === i ? { ...x, recargo_pct: ev.target.value } : x))}
+                    />
+                  </div>
+                </div>
+              ))}
+
+              {echeqsForm.length > 0 && (
+                <div className="flex items-center justify-between text-xs px-1">
+                  <span className="text-muted-foreground">
+                    Suma: <span className={`font-semibold ${sumaCalza ? 'text-success' : 'text-danger'}`}>
+                      {formatMoney(sumaEcheqs, monedaPrincipal)}
+                    </span>
+                    {' '}/{' '}
+                    <span className="text-white">{formatMoney(montoPrincipalNum, monedaPrincipal)}</span>
+                  </span>
+                  {!sumaCalza && (
+                    <span className="text-danger">
+                      Diferencia: {formatMoney(Math.abs(diferencia), monedaPrincipal)}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })()}
 
         {/* Contacto con autocompletado */}
         <div className="relative">

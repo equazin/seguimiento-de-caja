@@ -47,6 +47,7 @@ const NAV_ITEMS_BEFORE: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/movimientos', label: 'Movimientos', icon: ArrowLeftRight },
   { to: '/cuentas', label: 'Cuentas', icon: Wallet },
+  { to: '/echeqs', label: 'E-cheqs', icon: Receipt },
 ]
 
 const NAV_ITEMS_AFTER: NavItem[] = [

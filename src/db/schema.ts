@@ -9,6 +9,8 @@ export type {
   PedidoVenta,
   MovimientoVinculo,
   PedidoItem,
+  Echeq,
+  EchequEstado,
   EstadoPedidoCompra,
   EstadoPedidoVenta,
   TipoMovimiento,

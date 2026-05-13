@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Trash2, Edit2, ChevronLeft, ChevronRight, ArrowUpDown, ArrowLeftRight, Split } from 'lucide-react'
+import { Trash2, Edit2, ChevronLeft, ChevronRight, ArrowUpDown, ArrowLeftRight, Split, Receipt } from 'lucide-react'
 import { extraerSplitId, limpiarNotaSplit } from '@/lib/vinculos'
 import { useMovimientos, eliminarMovimiento, eliminarMovimientosBulk } from '@/hooks/useMovimientos'
 import { useCategorias } from '@/hooks/useCategorias'
@@ -249,6 +249,15 @@ export function Movimientos({ onModalOpen, onEdit }: Props) {
                             >
                               <Split size={9} />
                               {split.parte}/2
+                            </span>
+                          )}
+                          {m.metodo_pago === 'echeq' && (
+                            <span
+                              className="inline-flex items-center gap-1 rounded-full bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium text-warning"
+                              title="Movimiento con e-cheqs"
+                            >
+                              <Receipt size={9} />
+                              E-cheqs
                             </span>
                           )}
                         </div>
