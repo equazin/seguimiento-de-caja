@@ -20,7 +20,7 @@ import {
   serializarNotaSplit,
   validarVinculos,
 } from '@/lib/vinculos'
-import { METODOS_PAGO } from '@/lib/constants'
+import { METODOS_PAGO, cuentaEcheqsId } from '@/lib/constants'
 import { todayStr, formatMoney } from '@/lib/formatters'
 import { toast } from 'sonner'
 import type { Movimiento, TipoMovimiento, MetodoPago, MovimientoVinculo, MonedaCuenta } from '@/db/schema'
@@ -457,7 +457,7 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
         descripcion: form.descripcion.trim(),
         contacto: form.contacto.trim() || undefined,
         metodo_pago: form.metodo_pago,
-        cuenta_id: form.cuenta_id,
+        cuenta_id: form.metodo_pago === 'echeq' ? cuentaEcheqsId(monedaPrincipal) : form.cuenta_id,
         notas: notasMovimientoPrincipal ?? undefined,
       }
 
@@ -654,14 +654,14 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
 
         <div className="grid grid-cols-2 gap-4">
           <Select
-            label="Cuenta"
+            label={form.metodo_pago === 'echeq' ? 'Cuenta (referencia)' : 'Cuenta'}
             value={form.cuenta_id}
             onChange={e => set('cuenta_id', e.target.value)}
             error={errors.cuenta_id}
             required
           >
             <option value="">Seleccionar...</option>
-            {cuentas?.map(c => (
+            {cuentas?.filter(c => c.id !== 'cuenta-echeqs-ars' && c.id !== 'cuenta-echeqs-usd').map(c => (
               <option key={c.id} value={c.id}>{c.nombre}</option>
             ))}
           </Select>
@@ -766,6 +766,9 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
                   <Plus size={12} /> Agregar e-cheq
                 </Button>
               </div>
+              <p className="text-xs text-muted-foreground">
+                El monto se acumulará en <span className="text-warning font-medium">"E-cheqs en cartera ({monedaPrincipal})"</span> hasta que cada cheque se marque como cobrado. Al cobrar, se transferirá a la cuenta destino que indiques en cada e-cheq.
+              </p>
 
               {echeqsForm.length === 0 && (
                 <p className="text-xs text-muted-foreground italic">

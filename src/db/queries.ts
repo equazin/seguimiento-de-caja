@@ -63,6 +63,53 @@ export async function getCotizacionUSD(): Promise<number> {
   return Number.isFinite(num) && num > 0 ? num : 0
 }
 
+export interface EcheqsEnCartera {
+  ingresosArs: number
+  egresosArs: number
+  ingresosUsd: number
+  egresosUsd: number
+  countIngresos: number
+  countEgresos: number
+}
+
+export async function getEcheqsEnCartera(): Promise<EcheqsEnCartera> {
+  const { data: echeqs } = await supabase
+    .from('echeqs')
+    .select('monto, movimiento_id')
+    .eq('estado', 'pendiente')
+
+  if (!echeqs || echeqs.length === 0) {
+    return { ingresosArs: 0, egresosArs: 0, ingresosUsd: 0, egresosUsd: 0, countIngresos: 0, countEgresos: 0 }
+  }
+
+  const ids = [...new Set(echeqs.map(e => e.movimiento_id))]
+  const { data: movs } = await supabase
+    .from('movimientos')
+    .select('id, tipo, moneda_principal')
+    .in('id', ids)
+
+  const movMap = new Map((movs ?? []).map(m => [m.id, m]))
+  const acc: EcheqsEnCartera = {
+    ingresosArs: 0, egresosArs: 0, ingresosUsd: 0, egresosUsd: 0, countIngresos: 0, countEgresos: 0,
+  }
+  for (const e of echeqs) {
+    const m = movMap.get(e.movimiento_id)
+    if (!m) continue
+    const moneda = m.moneda_principal === 'USD' ? 'USD' : 'ARS'
+    const monto = Number(e.monto) || 0
+    if (m.tipo === 'ingreso') {
+      acc.countIngresos += 1
+      if (moneda === 'USD') acc.ingresosUsd += monto
+      else acc.ingresosArs += monto
+    } else {
+      acc.countEgresos += 1
+      if (moneda === 'USD') acc.egresosUsd += monto
+      else acc.egresosArs += monto
+    }
+  }
+  return acc
+}
+
 export async function getSaldoTotalConsolidadoARS(): Promise<{ ars: number; usd: number; consolidado: number; cotizacion: number }> {
   const [ars, usd, cotizacion] = await Promise.all([
     getSaldoTotalARS(),

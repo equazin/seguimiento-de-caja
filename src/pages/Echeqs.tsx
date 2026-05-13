@@ -1,16 +1,20 @@
 import { useMemo, useState } from 'react'
 import { Receipt, AlertTriangle, CalendarCheck, Clock, CheckCircle2, XCircle } from 'lucide-react'
-import { useTodosLosEcheqs, actualizarEstadoEcheq } from '@/hooks/useEcheqs'
+import { useTodosLosEcheqs, actualizarEstadoEcheq, cobrarEcheq } from '@/hooks/useEcheqs'
 import { useMovimientos } from '@/hooks/useMovimientos'
 import { useCuentas } from '@/hooks/useCuentas'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
+import { Dialog } from '@/components/ui/Dialog'
+import { Input, Select } from '@/components/ui/Input'
 import { SkeletonTable } from '@/components/ui/Skeleton'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { RowActionsMenu } from '@/components/ui/RowActionsMenu'
 import { formatMoney, formatDate, todayStr } from '@/lib/formatters'
 import { toast } from 'sonner'
-import type { Echeq, EchequEstado } from '@/db/schema'
+import type { Echeq, EchequEstado, Movimiento } from '@/db/schema'
+import { CUENTA_ECHEQS_ARS_ID, CUENTA_ECHEQS_USD_ID } from '@/lib/constants'
 
 type FiltroEstado = 'todos' | 'pendiente' | 'esta_semana' | 'vencido' | 'cobrado' | 'rechazado'
 
@@ -59,6 +63,10 @@ const ESTADO_COLOR: Record<EchequEstado, string> = {
 
 export function Echeqs() {
   const [filtro, setFiltro] = useState<FiltroEstado>('todos')
+  const [cobroDialog, setCobroDialog] = useState<{ echeq: Echeq; movimiento: Movimiento } | null>(null)
+  const [cobroCuentaId, setCobroCuentaId] = useState('')
+  const [cobroFecha, setCobroFecha] = useState(todayStr())
+  const [cobroLoading, setCobroLoading] = useState(false)
   const echeqs = useTodosLosEcheqs()
   const movimientos = useMovimientos()
   const cuentas = useCuentas()
@@ -104,6 +112,40 @@ export function Echeqs() {
       toast.success(`Estado actualizado: ${ESTADO_LABEL[nuevo]}`)
     } catch {
       toast.error('No se pudo actualizar el estado')
+    }
+  }
+
+  function abrirCobroDialog(echeq: Echeq) {
+    const mov = movimientoMap.get(echeq.movimiento_id)
+    if (!mov) {
+      toast.error('No se encontró el movimiento asociado')
+      return
+    }
+    setCobroDialog({ echeq, movimiento: mov })
+    setCobroCuentaId(echeq.cuenta_destino_id ?? '')
+    setCobroFecha(todayStr())
+  }
+
+  async function confirmarCobro() {
+    if (!cobroDialog) return
+    if (!cobroCuentaId) {
+      toast.error('Seleccioná la cuenta destino')
+      return
+    }
+    if (!cobroFecha) {
+      toast.error('Indicá la fecha de cobro')
+      return
+    }
+    setCobroLoading(true)
+    try {
+      await cobrarEcheq(cobroDialog.echeq, cobroCuentaId, cobroFecha, cobroDialog.movimiento)
+      toast.success('E-cheq cobrado y transferido a la cuenta destino')
+      setCobroDialog(null)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'No se pudo cobrar el e-cheq'
+      toast.error(msg)
+    } finally {
+      setCobroLoading(false)
     }
   }
 
@@ -264,7 +306,7 @@ export function Echeqs() {
                         <RowActionsMenu
                           ariaLabel="Acciones del e-cheq"
                           actions={[
-                            { id: 'cobrado', label: 'Marcar como cobrado', icon: CheckCircle2, onClick: () => cambiarEstado(e, 'cobrado'), disabled: e.estado === 'cobrado' },
+                            { id: 'cobrado', label: 'Cobrar e-cheq', icon: CheckCircle2, onClick: () => abrirCobroDialog(e), disabled: e.estado === 'cobrado' },
                             { id: 'rechazado', label: 'Marcar como rechazado', icon: XCircle, tone: 'danger', onClick: () => cambiarEstado(e, 'rechazado'), disabled: e.estado === 'rechazado' },
                             { id: 'pendiente', label: 'Volver a pendiente', icon: Clock, onClick: () => cambiarEstado(e, 'pendiente'), disabled: e.estado === 'pendiente' },
                           ]}
@@ -290,6 +332,70 @@ export function Echeqs() {
           </div>
         </div>
       </div>
+
+      <Dialog
+        open={cobroDialog !== null}
+        onClose={() => !cobroLoading && setCobroDialog(null)}
+        title="Cobrar e-cheq"
+        size="sm"
+      >
+        {cobroDialog && (() => {
+          const monedaPadre = cobroDialog.movimiento.moneda_principal === 'USD' ? 'USD' : 'ARS'
+          const cuentasDisponibles = (cuentas ?? []).filter(c =>
+            c.moneda === monedaPadre &&
+            c.id !== CUENTA_ECHEQS_ARS_ID &&
+            c.id !== CUENTA_ECHEQS_USD_ID
+          )
+          return (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-border bg-surface-2 p-3 space-y-1 text-sm">
+                <p className="text-muted-foreground">
+                  E-cheq de <span className="text-white font-semibold">{cobroDialog.echeq.librador}</span>
+                </p>
+                <p className="text-white font-bold text-lg">
+                  {formatMoney(cobroDialog.echeq.monto, monedaPadre)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Vencimiento: {formatDate(cobroDialog.echeq.fecha)}
+                </p>
+              </div>
+
+              <Select
+                label="Cuenta destino"
+                value={cobroCuentaId}
+                onChange={e => setCobroCuentaId(e.target.value)}
+                required
+              >
+                <option value="">Seleccionar cuenta {monedaPadre}...</option>
+                {cuentasDisponibles.map(c => (
+                  <option key={c.id} value={c.id}>{c.nombre}</option>
+                ))}
+              </Select>
+
+              <Input
+                label="Fecha de cobro"
+                type="date"
+                value={cobroFecha}
+                onChange={e => setCobroFecha(e.target.value)}
+                required
+              />
+
+              <p className="text-xs text-muted-foreground">
+                Se generarán 2 movimientos: uno saliendo de "E-cheqs en cartera" y otro entrando a la cuenta seleccionada.
+              </p>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="secondary" onClick={() => setCobroDialog(null)} disabled={cobroLoading}>
+                  Cancelar
+                </Button>
+                <Button type="button" onClick={confirmarCobro} loading={cobroLoading}>
+                  Confirmar cobro
+                </Button>
+              </div>
+            </div>
+          )
+        })()}
+      </Dialog>
     </>
   )
 }

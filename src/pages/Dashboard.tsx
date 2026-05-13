@@ -1,4 +1,4 @@
-import { Activity, AlertTriangle, FileCheck2, ShieldCheck, TrendingDown, TrendingUp, Wallet, type LucideIcon } from 'lucide-react'
+import { Activity, AlertTriangle, ArrowDownToLine, ArrowUpFromLine, FileCheck2, ShieldCheck, TrendingDown, TrendingUp, Wallet, type LucideIcon } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useDashboard } from '@/hooks/useDashboard'
 import { useCuentasConSaldo } from '@/hooks/useCuentas'
@@ -179,6 +179,35 @@ export function Dashboard({ onEditMovimiento }: Props) {
           delta={{ valorAnterior: data.resumenMesAnterior.resultado }}
         />
       </div>
+
+      {(data.echeqsCartera.countIngresos > 0 || data.echeqsCartera.countEgresos > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <KPICard
+            titulo="E-cheqs a cobrar"
+            valor={data.echeqsCartera.ingresosArs}
+            icono={ArrowDownToLine}
+            variante="ingreso"
+            subtitulo={
+              data.echeqsCartera.ingresosUsd > 0
+                ? `${data.echeqsCartera.countIngresos} pendientes · USD ${data.echeqsCartera.ingresosUsd.toFixed(2)}`
+                : `${data.echeqsCartera.countIngresos} pendientes`
+            }
+            moneda="ARS"
+          />
+          <KPICard
+            titulo="E-cheqs a pagar"
+            valor={data.echeqsCartera.egresosArs}
+            icono={ArrowUpFromLine}
+            variante="egreso"
+            subtitulo={
+              data.echeqsCartera.egresosUsd > 0
+                ? `${data.echeqsCartera.countEgresos} pendientes · USD ${data.echeqsCartera.egresosUsd.toFixed(2)}`
+                : `${data.echeqsCartera.countEgresos} pendientes`
+            }
+            moneda="ARS"
+          />
+        </div>
+      )}
 
       {cuentas && cuentas.length > 0 && (
         <div className="rounded-xl border border-border bg-surface/90 p-4 shadow-xl shadow-black/10">

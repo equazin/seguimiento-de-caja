@@ -110,7 +110,7 @@ export const INITIAL_BACKUP: {
     },
     { id: 'cuenta-efectivo', nombre: 'Caja Efectivo', tipo: 'efectivo', moneda: 'ARS', saldo_inicial: 0, activa: true },
     { id: 'cuenta-macro', nombre: 'Banco Macro ARS', tipo: 'banco', moneda: 'ARS', saldo_inicial: 0, activa: false },
-    { id: 'cuenta-mp', nombre: 'Mercado Pago', tipo: 'digital', moneda: 'ARS', saldo_inicial: 0, activa: true },
+    { id: 'cuenta-mp', nombre: 'Mercado Pago', tipo: 'digital', moneda: 'ARS', saldo_inicial: 0, activa: false },
     { id: 'cuenta-dolar-billete', nombre: 'Dólar Billete', tipo: 'efectivo', moneda: 'USD', saldo_inicial: 0, activa: true, sistema: true },
   ],
   configuracion: [

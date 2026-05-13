@@ -27,6 +27,13 @@ export const CUENTAS_DEFAULT: Omit<Cuenta, never>[] = [
   { id: 'cuenta-efectivo', nombre: 'Caja Efectivo', tipo: 'efectivo', moneda: 'ARS', saldo_inicial: 0, activa: true },
 ]
 
+export const CUENTA_ECHEQS_ARS_ID = 'cuenta-echeqs-ars'
+export const CUENTA_ECHEQS_USD_ID = 'cuenta-echeqs-usd'
+
+export function cuentaEcheqsId(moneda: 'ARS' | 'USD'): string {
+  return moneda === 'USD' ? CUENTA_ECHEQS_USD_ID : CUENTA_ECHEQS_ARS_ID
+}
+
 export const METODOS_PAGO: { value: MetodoPago; label: string; icono: string }[] = [
   { value: 'transferencia', label: 'Transferencia', icono: '\u{1F3E6}' },
   { value: 'mercado_pago', label: 'Mercado Pago', icono: '\u{1F499}' },

@@ -6,6 +6,7 @@ import {
   getEgresosPorCategoria,
   getIngresosEgresosPorMes,
   getSaldoAcumuladoUltimos30Dias,
+  getEcheqsEnCartera,
 } from '@/db/queries'
 import { useSupabaseQuery } from '@/hooks/useSupabaseQuery'
 
@@ -27,6 +28,7 @@ export function useDashboard() {
       egresosCat,
       chartMeses,
       chartSaldo,
+      echeqsCartera,
     ] = await Promise.all([
       getResumenMensual(anio, mes),
       getResumenMensual(anioAnterior, mesAnterior),
@@ -36,6 +38,7 @@ export function useDashboard() {
       getEgresosPorCategoria(anio, mes),
       getIngresosEgresosPorMes(6),
       getSaldoAcumuladoUltimos30Dias(),
+      getEcheqsEnCartera(),
     ])
 
     const saldoConsolidado = saldoArs + (cotizacion > 0 ? saldoUsd * cotizacion : 0)
@@ -52,6 +55,7 @@ export function useDashboard() {
       egresosPorCategoria: egresosCat,
       chartMeses,
       chartSaldo,
+      echeqsCartera,
     }
-  }, [], ['movimientos', 'cuentas', 'categorias', 'configuracion'])
+  }, [], ['movimientos', 'cuentas', 'categorias', 'configuracion', 'echeqs'])
 }
