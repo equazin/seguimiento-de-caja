@@ -146,29 +146,38 @@ export async function getContactosUsados(): Promise<string[]> {
 }
 
 export async function getConfiguracion(clave: string): Promise<string | null> {
-  const { data } = await supabase.from('configuracion').select('valor').eq('clave', clave).maybeSingle()
-  return data?.valor ?? null
+  const { data } = await supabase
+    .from('configuracion')
+    .select('valor')
+    .eq('clave', clave)
+    .limit(1)
+  return data?.[0]?.valor ?? null
 }
 
 export async function setConfiguracion(clave: string, valor: string): Promise<void> {
-  const existente = await supabase
+  const existentes = await supabase
     .from('configuracion')
     .select('id')
     .eq('clave', clave)
-    .maybeSingle()
-  if (existente.error) throw existente.error
+  if (existentes.error) throw existentes.error
 
-  if (existente.data) {
-    const { error } = await supabase
-      .from('configuracion')
-      .update({ valor })
-      .eq('id', existente.data.id)
-    if (error) throw error
-  } else {
+  const filas = existentes.data ?? []
+
+  if (filas.length === 0) {
     const { error } = await supabase
       .from('configuracion')
       .insert({ clave, valor })
     if (error) throw error
+  } else {
+    const { error, data: updated } = await supabase
+      .from('configuracion')
+      .update({ valor })
+      .eq('clave', clave)
+      .select('id')
+    if (error) throw error
+    if (!updated || updated.length === 0) {
+      throw new Error(`No se actualizó ninguna fila para clave "${clave}". Verificá permisos RLS.`)
+    }
   }
   notifyDataChanged()
 }

@@ -39,6 +39,7 @@ export function CotizacionUsdInput() {
       await update(num)
       setDirty(false)
       setSavedAt(Date.now())
+      toast.success(`Cotización actualizada a ${num}`)
       window.setTimeout(() => setSavedAt(null), 1500)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'No se pudo guardar'
