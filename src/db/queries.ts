@@ -41,10 +41,12 @@ export async function getSaldoCuenta(cuentaId: string): Promise<number> {
   return cuenta.saldo_inicial + totalIngresos - totalEgresos
 }
 
+const CUENTAS_VIRTUALES_IDS = ['cuenta-echeqs-ars', 'cuenta-echeqs-usd']
+
 export async function getSaldoTotalARS(): Promise<number> {
   const { data: cuentas } = await supabase.from('cuentas').select('id, moneda').eq('activa', true)
   if (!cuentas) return 0
-  const cuentasArs = cuentas.filter(c => c.moneda === 'ARS')
+  const cuentasArs = cuentas.filter(c => c.moneda === 'ARS' && !CUENTAS_VIRTUALES_IDS.includes(c.id))
   const saldos = await Promise.all(cuentasArs.map(c => getSaldoCuenta(c.id)))
   return saldos.reduce((s, v) => s + v, 0)
 }
@@ -52,7 +54,7 @@ export async function getSaldoTotalARS(): Promise<number> {
 export async function getSaldoTotalUSD(): Promise<number> {
   const { data: cuentas } = await supabase.from('cuentas').select('id, moneda').eq('activa', true)
   if (!cuentas) return 0
-  const cuentasUsd = cuentas.filter(c => c.moneda === 'USD')
+  const cuentasUsd = cuentas.filter(c => c.moneda === 'USD' && !CUENTAS_VIRTUALES_IDS.includes(c.id))
   const saldos = await Promise.all(cuentasUsd.map(c => getSaldoCuenta(c.id)))
   return saldos.reduce((s, v) => s + v, 0)
 }
