@@ -18,12 +18,25 @@ import type { Cliente, Documento, DocumentoItem, Producto } from '@/db/schema'
 
 type DocumentoReporte = Pick<
   Documento,
-  'id' | 'tipo_operacion' | 'tipo_documento' | 'estado' | 'cliente_id' | 'fecha' | 'subtotal' | 'iva_total' | 'total' | 'moneda' | 'tipo_cambio'
+  | 'id'
+  | 'tipo_operacion'
+  | 'tipo_documento'
+  | 'estado'
+  | 'cliente_id'
+  | 'fecha'
+  | 'subtotal'
+  | 'iva_total'
+  | 'total'
+  | 'moneda'
+  | 'tipo_cambio'
+  | 'subtotal_usd'
+  | 'iva_total_usd'
+  | 'total_usd'
 >
 
 type DocumentoItemReporte = Pick<
   DocumentoItem,
-  'documento_id' | 'producto_id' | 'descripcion' | 'cantidad' | 'total'
+  'documento_id' | 'producto_id' | 'descripcion' | 'cantidad' | 'total' | 'total_usd'
 >
 
 const TIPOS_REPORTE = ['factura', 'nota_credito', 'nota_debito']
@@ -347,7 +360,7 @@ function useDocumentosReporte(fechaDesde: string, fechaHasta: string) {
     async () => {
       const { data, error } = await supabaseAfip
         .from('documentos')
-        .select('id,tipo_operacion,tipo_documento,estado,cliente_id,fecha,subtotal,iva_total,total,moneda,tipo_cambio')
+        .select('id,tipo_operacion,tipo_documento,estado,cliente_id,fecha,subtotal,iva_total,total,moneda,tipo_cambio,subtotal_usd,iva_total_usd,total_usd')
         .gte('fecha', fechaDesde)
         .lte('fecha', fechaHasta)
         .in('tipo_documento', TIPOS_REPORTE)
@@ -367,7 +380,7 @@ function useDocumentoItemsReporte(documentoIds: string[]) {
       if (documentoIds.length === 0) return [] as DocumentoItemReporte[]
       const { data, error } = await supabaseAfip
         .from('documento_items')
-        .select('documento_id,producto_id,descripcion,cantidad,total')
+        .select('documento_id,producto_id,descripcion,cantidad,total,total_usd')
         .in('documento_id', documentoIds)
       if (error) throw error
       return (data ?? []) as DocumentoItemReporte[]
@@ -383,9 +396,9 @@ function aggregateIva(documentos: DocumentoReporte[], tipoOperacion: 'venta' | '
     .reduce(
       (acc, documento) => {
         const sign = documentoSign(documento)
-        acc.neto += sign * toArs(documento.subtotal, documento)
-        acc.iva += sign * toArs(documento.iva_total, documento)
-        acc.total += sign * toArs(documento.total, documento)
+        acc.neto += sign * amountArs(documento.subtotal)
+        acc.iva += sign * amountArs(documento.iva_total)
+        acc.total += sign * amountArs(documento.total)
         acc.cantidad += 1
         return acc
       },
@@ -411,7 +424,7 @@ function buildClientesRanking(
       }
       grouped.set(key, {
         ...prev,
-        value: prev.value + documentoSign(documento) * toArs(documento.total, documento),
+        value: prev.value + documentoSign(documento) * amountArs(documento.total),
         secondary: prev.secondary + 1,
       })
     })
@@ -443,7 +456,7 @@ function buildProductosRanking(
     const sign = documentoSign(documento)
     grouped.set(key, {
       ...prev,
-      value: prev.value + sign * toArs(item.total, documento),
+      value: prev.value + sign * amountArs(item.total),
       secondary: prev.secondary + sign * Number(item.cantidad),
     })
   })
@@ -458,10 +471,9 @@ function documentoSign(documento: DocumentoReporte): number {
   return documento.tipo_documento === 'nota_credito' ? -1 : 1
 }
 
-function toArs(value: number, documento: DocumentoReporte): number {
+function amountArs(value: number): number {
   const amount = Number(value)
-  if (documento.moneda === 'USD') return amount * Number(documento.tipo_cambio || 1)
-  return amount
+  return Number.isFinite(amount) ? amount : 0
 }
 
 function IvaSummary({

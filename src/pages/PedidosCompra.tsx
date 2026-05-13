@@ -40,32 +40,54 @@ interface FormState {
   proveedor: string  // texto libre como fallback si no hay seleccion
   fecha: string
   fecha_vencimiento: string
+  tipo_cambio: string
+  descripcion: string
+  items: FormItemState[]
+  notas: string
+}
+
+interface FormItemState {
+  uid: string
   producto_id: string
   cantidad: string
   precio_unitario_usd: string
   alicuota_iva: string
-  tipo_cambio: string
   descripcion: string
-  notas: string
-}
-
-const INITIAL_FORM: FormState = {
-  numero: '',
-  proveedor_id: '',
-  proveedor: '',
-  fecha: new Date().toISOString().split('T')[0],
-  fecha_vencimiento: '',
-  producto_id: '',
-  cantidad: '1',
-  precio_unitario_usd: '',
-  alicuota_iva: '21',
-  tipo_cambio: '',
-  descripcion: '',
-  notas: '',
 }
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100
+}
+
+function parseDecimal(value: string): number {
+  return Number(value.replace(',', '.'))
+}
+
+function newItem(partial: Partial<FormItemState> = {}): FormItemState {
+  const uid = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`
+  return {
+    uid,
+    producto_id: '',
+    cantidad: '1',
+    precio_unitario_usd: '',
+    alicuota_iva: '21',
+    descripcion: '',
+    ...partial,
+  }
+}
+
+function newForm(): FormState {
+  return {
+    numero: '',
+    proveedor_id: '',
+    proveedor: '',
+    fecha: new Date().toISOString().split('T')[0],
+    fecha_vencimiento: '',
+    tipo_cambio: '',
+    descripcion: '',
+    items: [newItem()],
+    notas: '',
+  }
 }
 
 // ─── Detalle expandible ───────────────────────────────────────────────────────
@@ -86,6 +108,32 @@ function FilaDetalle({ id }: { id: string }) {
         <div><p className="text-xs text-muted-foreground">Pagado</p><p className="font-semibold text-success">{formatMoney(totalPagado)}</p></div>
         <div><p className="text-xs text-muted-foreground">Saldo</p><p className={`font-semibold ${saldo > 0 ? 'text-warning' : 'text-success'}`}>{formatMoney(saldo)}</p></div>
       </div>
+      {!!pedido.items?.length && (
+        <div className="rounded-lg border border-border overflow-hidden">
+          <table className="w-full text-xs">
+            <thead className="bg-surface-2 text-muted-foreground">
+              <tr>
+                <th className="px-3 py-2 text-left font-medium">Item</th>
+                <th className="px-3 py-2 text-right font-medium">Cantidad</th>
+                <th className="px-3 py-2 text-right font-medium">Precio USD</th>
+                <th className="px-3 py-2 text-right font-medium">IVA</th>
+                <th className="px-3 py-2 text-right font-medium">Total USD</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {pedido.items.map((item, idx) => (
+                <tr key={`${item.producto_id ?? item.descripcion}-${idx}`} className="hover:bg-surface-2/50">
+                  <td className="px-3 py-2 text-white">{item.descripcion}</td>
+                  <td className="px-3 py-2 text-right text-muted-foreground">{Number(item.cantidad).toLocaleString('es-AR')}</td>
+                  <td className="px-3 py-2 text-right text-muted-foreground">{formatMoney(Number(item.precio_unitario), 'USD')}</td>
+                  <td className="px-3 py-2 text-right text-muted-foreground">{Number(item.alicuota_iva ?? 0)}%</td>
+                  <td className="px-3 py-2 text-right text-white">{formatMoney(Number(item.total ?? 0), 'USD')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       {vinculos.length === 0
         ? <p className="text-xs text-muted-foreground italic">Sin pagos vinculados</p>
         : (
@@ -131,8 +179,8 @@ function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
   const cotizacion = useCotizacionUSD()
   const cotizacionGlobal = cotizacion?.cotizacion ?? 0
 
-  const [form, setForm] = useState<FormState>(INITIAL_FORM)
-  const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({})
+  const [form, setForm] = useState<FormState>(() => newForm())
+  const [errors, setErrors] = useState<Record<string, string | undefined>>({})
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -141,27 +189,38 @@ function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
     if (pedido) {
       const proveedorId = pedido.proveedor_id ?? ''
       const tcPedido = pedido.tipo_cambio
-      const item = pedido.items?.[0]
-      const ivaFallback = 0
+      const items = pedido.items?.length
+        ? pedido.items.map(item => newItem({
+            producto_id: item.producto_id ?? '',
+            cantidad: String(item.cantidad ?? 1),
+            precio_unitario_usd: String(item.precio_unitario ?? ''),
+            alicuota_iva: String(item.alicuota_iva ?? 0),
+            descripcion: item.descripcion ?? '',
+          }))
+        : [newItem()]
       const totalUsd = Number(pedido.monto_total_usd ?? 0)
-      const precioFallback = totalUsd > 0 ? totalUsd : 0
+      if (!pedido.items?.length && totalUsd > 0) {
+        items[0] = newItem({
+          cantidad: '1',
+          precio_unitario_usd: String(totalUsd),
+          alicuota_iva: '0',
+          descripcion: pedido.descripcion ?? '',
+        })
+      }
       setForm({
         numero: pedido.numero,
         proveedor_id: proveedorId,
         proveedor: pedido.proveedor ?? '',
         fecha: pedido.fecha,
         fecha_vencimiento: pedido.fecha_vencimiento ?? '',
-        producto_id: item?.producto_id ?? '',
-        cantidad: String(item?.cantidad ?? 1),
-        precio_unitario_usd: String(item?.precio_unitario ?? (precioFallback || '')),
-        alicuota_iva: String(item?.alicuota_iva ?? ivaFallback),
         tipo_cambio: tcPedido != null ? String(tcPedido) : String(cotizacionGlobal || ''),
-        descripcion: item?.descripcion ?? pedido.descripcion ?? '',
+        descripcion: pedido.descripcion ?? '',
+        items,
         notas: pedido.notas ?? '',
       })
     } else {
       setForm({
-        ...INITIAL_FORM,
+        ...newForm(),
         fecha: new Date().toISOString().split('T')[0],
         tipo_cambio: cotizacionGlobal > 0 ? String(cotizacionGlobal) : '',
       })
@@ -171,6 +230,23 @@ function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm(f => ({ ...f, [key]: value }))
     setErrors(e => ({ ...e, [key]: undefined }))
+  }
+
+  const itemErrorKey = (uid: string, key: keyof FormItemState) => `item.${uid}.${key}`
+
+  const setItem = (uid: string, patch: Partial<FormItemState>) => {
+    setForm(f => ({
+      ...f,
+      items: f.items.map(item => item.uid === uid ? { ...item, ...patch } : item),
+    }))
+    setErrors(e => {
+      const next = { ...e }
+      Object.keys(patch).forEach(key => {
+        next[itemErrorKey(uid, key as keyof FormItemState)] = undefined
+      })
+      next.items = undefined
+      return next
+    })
   }
 
   function pickProveedor(id: string) {
@@ -183,41 +259,86 @@ function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
     setErrors(e => ({ ...e, proveedor: undefined, proveedor_id: undefined }))
   }
 
-  function pickProducto(id: string) {
+  function pickProducto(uid: string, id: string) {
     const producto = productos.find(p => p.id === id)
-    setForm(f => ({
-      ...f,
+    if (!producto) {
+      setItem(uid, { producto_id: id })
+      return
+    }
+    setItem(uid, {
       producto_id: id,
-      descripcion: producto ? producto.nombre : f.descripcion,
-      precio_unitario_usd: producto ? String(producto.precio_neto) : f.precio_unitario_usd,
-      alicuota_iva: producto ? String(producto.alicuota_iva) : f.alicuota_iva,
-    }))
-    setErrors(e => ({ ...e, producto_id: undefined, precio_unitario_usd: undefined, alicuota_iva: undefined }))
+      descripcion: producto.nombre,
+      precio_unitario_usd: String(producto.precio_neto),
+      alicuota_iva: String(producto.alicuota_iva),
+    })
   }
 
-  const cantidadNum = Number(form.cantidad.replace(',', '.'))
-  const precioUnitarioNum = Number(form.precio_unitario_usd.replace(',', '.'))
-  const ivaNum = Number(form.alicuota_iva)
-  const tcNum = Number(form.tipo_cambio.replace(',', '.'))
-  const subtotalUsd =
-    Number.isFinite(cantidadNum) && cantidadNum > 0 && Number.isFinite(precioUnitarioNum) && precioUnitarioNum >= 0
-      ? round2(cantidadNum * precioUnitarioNum)
-      : 0
-  const ivaUsd = Number.isFinite(ivaNum) && ivaNum > 0 ? round2(subtotalUsd * ivaNum / 100) : 0
-  const totalUsd = round2(subtotalUsd + ivaUsd)
+  function addItem() {
+    setForm(f => ({ ...f, items: [...f.items, newItem()] }))
+    setErrors(e => ({ ...e, items: undefined }))
+  }
+
+  function removeItem(uid: string) {
+    setForm(f => ({
+      ...f,
+      items: f.items.length > 1 ? f.items.filter(item => item.uid !== uid) : f.items,
+    }))
+    setErrors(e => {
+      const next = { ...e }
+      Object.keys(next).forEach(key => {
+        if (key.startsWith(`item.${uid}.`)) delete next[key]
+      })
+      return next
+    })
+  }
+
+  const tcNum = parseDecimal(form.tipo_cambio)
+  const itemsCalculados = useMemo(() => {
+    return form.items.map(item => {
+      const cantidad = parseDecimal(item.cantidad)
+      const precioUnitario = parseDecimal(item.precio_unitario_usd)
+      const iva = parseDecimal(item.alicuota_iva)
+      const cantidadValida = Number.isFinite(cantidad) && cantidad > 0
+      const precioValido = Number.isFinite(precioUnitario) && precioUnitario >= 0
+      const subtotal = cantidadValida && precioValido ? round2(cantidad * precioUnitario) : 0
+      const ivaImporte = Number.isFinite(iva) && iva > 0 ? round2(subtotal * iva / 100) : 0
+      return {
+        cantidad,
+        precioUnitario,
+        iva,
+        subtotal,
+        ivaImporte,
+        total: round2(subtotal + ivaImporte),
+      }
+    })
+  }, [form.items])
+
+  const subtotalUsd = round2(itemsCalculados.reduce((sum, item) => sum + item.subtotal, 0))
+  const ivaUsd = round2(itemsCalculados.reduce((sum, item) => sum + item.ivaImporte, 0))
+  const totalUsd = round2(itemsCalculados.reduce((sum, item) => sum + item.total, 0))
   const arsCalculado =
     totalUsd > 0 && Number.isFinite(tcNum) && tcNum > 0
       ? round2(totalUsd * tcNum)
       : 0
 
   const validate = (): boolean => {
-    const errs: Partial<Record<keyof FormState, string>> = {}
+    const errs: Record<string, string> = {}
     if (!form.proveedor_id && !form.proveedor.trim()) errs.proveedor_id = 'Seleccioná un proveedor'
     if (!form.fecha) errs.fecha = 'Requerido'
-    if (!Number.isFinite(cantidadNum) || cantidadNum <= 0) errs.cantidad = 'Cantidad invalida'
-    if (!Number.isFinite(precioUnitarioNum) || precioUnitarioNum < 0) errs.precio_unitario_usd = 'Precio invalido'
-    if (!Number.isFinite(ivaNum) || ivaNum < 0) errs.alicuota_iva = 'IVA invalido'
-    if (totalUsd <= 0) errs.precio_unitario_usd = 'El total debe ser mayor a cero'
+    if (form.items.length === 0) errs.items = 'Agrega al menos un item'
+    form.items.forEach((item, idx) => {
+      const calc = itemsCalculados[idx]
+      if (!Number.isFinite(calc.cantidad) || calc.cantidad <= 0) {
+        errs[itemErrorKey(item.uid, 'cantidad')] = 'Cantidad invalida'
+      }
+      if (!Number.isFinite(calc.precioUnitario) || calc.precioUnitario < 0) {
+        errs[itemErrorKey(item.uid, 'precio_unitario_usd')] = 'Precio invalido'
+      }
+      if (!Number.isFinite(calc.iva) || calc.iva < 0) {
+        errs[itemErrorKey(item.uid, 'alicuota_iva')] = 'IVA invalido'
+      }
+    })
+    if (totalUsd <= 0) errs.items = 'El total debe ser mayor a cero'
     if (!Number.isFinite(tcNum) || tcNum <= 0) errs.tipo_cambio = 'Tipo de cambio inválido'
     setErrors(errs)
     return Object.keys(errs).length === 0
@@ -228,20 +349,23 @@ function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
     if (!validate()) return
     setLoading(true)
     try {
-      const producto = productos.find(p => p.id === form.producto_id)
-      const item: PedidoItem = {
-        producto_id: form.producto_id || null,
-        codigo: producto?.codigo ?? null,
-        descripcion: form.descripcion.trim() || producto?.nombre || 'Pedido de compra',
-        cantidad: cantidadNum,
-        unidad_medida: producto?.unidad_medida ?? 'unidad',
-        precio_unitario: precioUnitarioNum,
-        bonificacion: 0,
-        alicuota_iva: ivaNum,
-        subtotal: subtotalUsd,
-        iva_importe: ivaUsd,
-        total: totalUsd,
-      }
+      const items: PedidoItem[] = form.items.map((item, idx) => {
+        const producto = productos.find(p => p.id === item.producto_id)
+        const calc = itemsCalculados[idx]
+        return {
+          producto_id: item.producto_id || null,
+          codigo: producto?.codigo ?? null,
+          descripcion: item.descripcion.trim() || producto?.nombre || `Item ${idx + 1}`,
+          cantidad: calc.cantidad,
+          unidad_medida: producto?.unidad_medida ?? 'unidad',
+          precio_unitario: calc.precioUnitario,
+          bonificacion: 0,
+          alicuota_iva: calc.iva,
+          subtotal: calc.subtotal,
+          iva_importe: calc.ivaImporte,
+          total: calc.total,
+        }
+      })
       const data = {
         numero: pedido ? form.numero.trim() : '',
         proveedor: form.proveedor.trim(),
@@ -253,7 +377,7 @@ function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
         monto_total_usd: totalUsd,
         tipo_cambio: tcNum,
         descripcion: form.descripcion.trim() || null,
-        items: [item],
+        items,
         notas: form.notas.trim() || null,
       }
       if (pedido) {
@@ -272,7 +396,7 @@ function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
   }
 
   return (
-    <Dialog open={open} onClose={onClose} title={pedido ? 'Editar pedido de compra' : 'Nuevo pedido de compra'} size="lg">
+    <Dialog open={open} onClose={onClose} title={pedido ? 'Editar pedido de compra' : 'Nuevo pedido de compra'} size="xl">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <Input
@@ -299,46 +423,136 @@ function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
           <Input label="Fecha" type="date" value={form.fecha} onChange={e => set('fecha', e.target.value)} error={errors.fecha} required />
           <Input label="Vencimiento (opcional)" type="date" value={form.fecha_vencimiento} onChange={e => set('fecha_vencimiento', e.target.value)} />
         </div>
-        <div className="grid grid-cols-2 gap-4">
-          <Select
-            label="Producto / orden"
-            value={form.producto_id}
-            onChange={e => pickProducto(e.target.value)}
-          >
-            <option value="">Manual / sin producto</option>
-            {productos.map(p => (
-              <option key={p.id} value={p.id}>{p.nombre}</option>
-            ))}
-          </Select>
+        <div className="grid grid-cols-[1fr_220px] gap-4">
+          <div>
+          <Input label="Descripcion (opcional)" placeholder="Descripcion del pedido" value={form.descripcion} onChange={e => set('descripcion', e.target.value)} />
+          </div>
           <Input
-            label="Cantidad"
+            label="Tipo de cambio"
             type="number"
             min="0"
             step="0.01"
-            value={form.cantidad}
-            onChange={e => set('cantidad', e.target.value)}
-            error={errors.cantidad}
+            value={form.tipo_cambio}
+            onChange={e => set('tipo_cambio', e.target.value)}
+            error={errors.tipo_cambio}
+            hint={
+              cotizacionGlobal > 0 && tcNum && Math.abs(cotizacionGlobal - tcNum) > 0.001
+                ? `Global: ${cotizacionGlobal}`
+                : 'Cotizacion global'
+            }
             required
           />
         </div>
-        <div className="grid grid-cols-3 gap-4">
-          <Input
-            label="Precio unitario USD (sin IVA)"
-            type="number"
-            min="0"
-            step="0.01"
-            placeholder="USD 0.00"
-            value={form.precio_unitario_usd}
-            onChange={e => set('precio_unitario_usd', e.target.value)}
-            error={errors.precio_unitario_usd}
-            hint={`Total ${formatMoney(totalUsd, 'USD')} con IVA`}
-            required
-          />
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Items</p>
+            <Button type="button" size="sm" variant="secondary" onClick={addItem}>
+              <Plus size={14} /> Agregar item
+            </Button>
+          </div>
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full min-w-[840px] text-sm">
+              <thead className="bg-surface-2 text-xs uppercase text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium">Producto / descripcion</th>
+                  <th className="px-3 py-2 text-right font-medium w-24">Cantidad</th>
+                  <th className="px-3 py-2 text-right font-medium w-36">Precio USD</th>
+                  <th className="px-3 py-2 text-right font-medium w-28">IVA</th>
+                  <th className="px-3 py-2 text-right font-medium w-32">Total</th>
+                  <th className="w-10" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {form.items.map((item, idx) => {
+                  const calc = itemsCalculados[idx]
+                  return (
+                    <tr key={item.uid} className="align-top">
+                      <td className="px-3 py-3">
+                        <div className="space-y-2">
+                          <Select
+                            aria-label="Producto"
+                            value={item.producto_id}
+                            onChange={e => pickProducto(item.uid, e.target.value)}
+                          >
+                            <option value="">Manual / sin producto</option>
+                            {productos.map(p => (
+                              <option key={p.id} value={p.id}>{p.nombre}</option>
+                            ))}
+                          </Select>
+                          <Input
+                            aria-label="Descripcion"
+                            placeholder="Descripcion del item"
+                            value={item.descripcion}
+                            onChange={e => setItem(item.uid, { descripcion: e.target.value })}
+                          />
+                        </div>
+                      </td>
+                      <td className="px-3 py-3">
+                        <Input
+                          aria-label="Cantidad"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={item.cantidad}
+                          onChange={e => setItem(item.uid, { cantidad: e.target.value })}
+                          error={errors[itemErrorKey(item.uid, 'cantidad')]}
+                          required
+                        />
+                      </td>
+                      <td className="px-3 py-3">
+                        <Input
+                          aria-label="Precio unitario USD"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={item.precio_unitario_usd}
+                          onChange={e => setItem(item.uid, { precio_unitario_usd: e.target.value })}
+                          error={errors[itemErrorKey(item.uid, 'precio_unitario_usd')]}
+                          required
+                        />
+                      </td>
+                      <td className="px-3 py-3">
+                        <Select
+                          aria-label="IVA"
+                          value={item.alicuota_iva}
+                          onChange={e => setItem(item.uid, { alicuota_iva: e.target.value })}
+                          error={errors[itemErrorKey(item.uid, 'alicuota_iva')]}
+                          required
+                        >
+                          {ALICUOTAS_IVA.map(a => (
+                            <option key={a} value={a}>{a}%</option>
+                          ))}
+                        </Select>
+                      </td>
+                      <td className="px-3 py-3 text-right font-semibold text-white tabular-nums">
+                        {formatMoney(calc.total, 'USD')}
+                      </td>
+                      <td className="px-2 py-3">
+                        <button
+                          type="button"
+                          onClick={() => removeItem(item.uid)}
+                          disabled={form.items.length === 1}
+                          className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-danger/10 hover:text-danger disabled:cursor-not-allowed disabled:opacity-30"
+                          aria-label="Eliminar item"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          {errors.items && <p className="text-xs text-danger">{errors.items}</p>}
+        </div>
+        <div className="hidden">
           <Select
             label="IVA"
-            value={form.alicuota_iva}
-            onChange={e => set('alicuota_iva', e.target.value)}
-            error={errors.alicuota_iva}
+            value={form.items[0]?.alicuota_iva ?? '21'}
+            onChange={e => form.items[0] && setItem(form.items[0].uid, { alicuota_iva: e.target.value })}
+            error={form.items[0] ? errors[itemErrorKey(form.items[0].uid, 'alicuota_iva')] : undefined}
             required
           >
             {ALICUOTAS_IVA.map(a => (
@@ -361,7 +575,9 @@ function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
             required
           />
         </div>
-        <Input label="Descripción (opcional)" placeholder="Descripción del pedido" value={form.descripcion} onChange={e => set('descripcion', e.target.value)} />
+        <div className="hidden">
+          <Input label="Descripción (opcional)" placeholder="Descripción del pedido" value={form.descripcion} onChange={e => set('descripcion', e.target.value)} />
+        </div>
         <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total calculado</p>
           <p className="mt-1 font-semibold text-white">{formatMoney(totalUsd, 'USD')}</p>
