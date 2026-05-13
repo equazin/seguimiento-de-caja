@@ -1,4 +1,4 @@
-import type { EstadoPedidoCompra, EstadoPedidoVenta, MovimientoVinculo, PedidoCompra, PedidoVenta } from '@/db/schema'
+import type { EstadoPedidoCompra, EstadoPedidoVenta, MonedaCuenta, Movimiento, MovimientoVinculo, PedidoCompra, PedidoVenta } from '@/db/schema'
 
 const RETENCION_GANANCIAS_RE = /\s*\[retencion_ganancias:([0-9]+(?:[\.,][0-9]+)?)\]\s*/i
 
@@ -26,33 +26,82 @@ export function montoCanceladoVinculo(vinculo: Pick<MovimientoVinculo, 'monto_ap
   return Number(vinculo.monto_aplicado) + obtenerRetencionGanancias(vinculo)
 }
 
+type MovimientoMoneda = Pick<Movimiento, 'id' | 'moneda_principal' | 'tipo_cambio'>
+export type MovimientosPorId = Map<string, MovimientoMoneda>
+
+function monedaPedido(pedido: PedidoCompra | PedidoVenta): MonedaCuenta {
+  return pedido.monto_total_usd != null && Number(pedido.monto_total_usd) > 0 ? 'USD' : 'ARS'
+}
+
+export function totalPedidoEnMonedaPrincipal(pedido: PedidoCompra | PedidoVenta): number {
+  return monedaPedido(pedido) === 'USD'
+    ? Number(pedido.monto_total_usd ?? 0)
+    : Number(pedido.monto_total)
+}
+
+function convertirMontoEntreMonedas(
+  monto: number,
+  monedaOrigen: MonedaCuenta,
+  monedaDestino: MonedaCuenta,
+  tipoCambio: number
+): number {
+  if (monedaOrigen === monedaDestino) return monto
+  const tc = Number.isFinite(tipoCambio) && tipoCambio > 0 ? tipoCambio : 1
+  return monedaDestino === 'USD' ? monto / tc : monto * tc
+}
+
+export function montoVinculoEnMonedaPedido(
+  vinculo: Pick<MovimientoVinculo, 'movimiento_id' | 'monto_aplicado' | 'notas'>,
+  pedido: PedidoCompra | PedidoVenta,
+  movimientos?: MovimientosPorId,
+  incluirRetenciones = true
+): number {
+  const movimiento = movimientos?.get(vinculo.movimiento_id)
+  const monedaDestino = monedaPedido(pedido)
+  const monedaOrigen = movimiento?.moneda_principal ?? monedaDestino
+  const tipoCambio = Number(movimiento?.tipo_cambio ?? pedido.tipo_cambio ?? 1)
+  const monto = incluirRetenciones ? montoCanceladoVinculo(vinculo) : Number(vinculo.monto_aplicado)
+  return convertirMontoEntreMonedas(monto, monedaOrigen, monedaDestino, tipoCambio)
+}
+
+export function totalCanceladoEnMonedaPedido(
+  pedido: PedidoCompra | PedidoVenta,
+  vinculos: MovimientoVinculo[],
+  movimientos?: MovimientosPorId
+): number {
+  return vinculos.reduce((s, v) => s + montoVinculoEnMonedaPedido(v, pedido, movimientos), 0)
+}
+
 export function calcularSaldoPendiente(
   pedido: PedidoCompra | PedidoVenta,
-  vinculos: MovimientoVinculo[]
+  vinculos: MovimientoVinculo[],
+  movimientos?: MovimientosPorId
 ): number {
-  const totalPagado = vinculos.reduce((s, v) => s + montoCanceladoVinculo(v), 0)
-  return Math.max(0, pedido.monto_total - totalPagado)
+  const totalPagado = totalCanceladoEnMonedaPedido(pedido, vinculos, movimientos)
+  return Math.max(0, totalPedidoEnMonedaPrincipal(pedido) - totalPagado)
 }
 
 export function calcularEstadoCompra(
   pedido: PedidoCompra,
-  vinculos: MovimientoVinculo[]
+  vinculos: MovimientoVinculo[],
+  movimientos?: MovimientosPorId
 ): EstadoPedidoCompra {
   if (pedido.estado === 'cancelado') return 'cancelado'
-  const totalPagado = vinculos.reduce((s, v) => s + montoCanceladoVinculo(v), 0)
+  const totalPagado = totalCanceladoEnMonedaPedido(pedido, vinculos, movimientos)
   if (totalPagado <= 0) return 'pendiente'
-  if (totalPagado >= pedido.monto_total) return 'pagado_total'
+  if (totalPagado >= totalPedidoEnMonedaPrincipal(pedido)) return 'pagado_total'
   return 'pagado_parcial'
 }
 
 export function calcularEstadoVenta(
   pedido: PedidoVenta,
-  vinculos: MovimientoVinculo[]
+  vinculos: MovimientoVinculo[],
+  movimientos?: MovimientosPorId
 ): EstadoPedidoVenta {
   if (pedido.estado === 'cancelado') return 'cancelado'
-  const totalCobrado = vinculos.reduce((s, v) => s + montoCanceladoVinculo(v), 0)
+  const totalCobrado = totalCanceladoEnMonedaPedido(pedido, vinculos, movimientos)
   if (totalCobrado <= 0) return 'pendiente'
-  if (totalCobrado >= pedido.monto_total) return 'cobrado_total'
+  if (totalCobrado >= totalPedidoEnMonedaPrincipal(pedido)) return 'cobrado_total'
   return 'cobrado_parcial'
 }
 

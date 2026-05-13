@@ -21,6 +21,9 @@ import {
   ESTADO_COMPRA_CONFIG,
   calcularSaldoPendiente,
   estaVencido,
+  montoVinculoEnMonedaPedido,
+  totalCanceladoEnMonedaPedido,
+  totalPedidoEnMonedaPrincipal,
   venceProximamente,
 } from '@/lib/vinculos'
 import { toast } from 'sonner'
@@ -114,16 +117,21 @@ function FilaDetalle({ id }: { id: string }) {
   if (!detalle) return (
     <div className="py-4 text-center text-sm text-muted-foreground">Cargando...</div>
   )
-  const { pedido, vinculos } = detalle
-  const totalPagado = vinculos.reduce((s, v) => s + v.monto_aplicado, 0)
-  const saldo = calcularSaldoPendiente(pedido, vinculos)
+  const { pedido, vinculos, movimientos } = detalle
+  const monedaPedido = pedido.monto_total_usd != null && Number(pedido.monto_total_usd) > 0 ? 'USD' : 'ARS'
+  const totalPagado = totalCanceladoEnMonedaPedido(pedido, vinculos, movimientos)
+  const saldo = calcularSaldoPendiente(pedido, vinculos, movimientos)
+  const diferenciaFavor = Math.max(0, totalPagado - totalPedidoEnMonedaPrincipal(pedido))
   return (
     <div className="px-6 pb-4 pt-2 space-y-3">
       {pedido.descripcion && <p className="text-sm text-muted-foreground">{pedido.descripcion}</p>}
       <div className="flex gap-6 text-sm">
-        <div><p className="text-xs text-muted-foreground">Total</p><p className="font-semibold text-white">{formatMoney(pedido.monto_total)}</p></div>
-        <div><p className="text-xs text-muted-foreground">Pagado</p><p className="font-semibold text-success">{formatMoney(totalPagado)}</p></div>
-        <div><p className="text-xs text-muted-foreground">Saldo</p><p className={`font-semibold ${saldo > 0 ? 'text-warning' : 'text-success'}`}>{formatMoney(saldo)}</p></div>
+        <div><p className="text-xs text-muted-foreground">Total</p><p className="font-semibold text-white">{formatMoney(totalPedidoEnMonedaPrincipal(pedido), monedaPedido)}</p></div>
+        <div><p className="text-xs text-muted-foreground">Pagado</p><p className="font-semibold text-success">{formatMoney(totalPagado, monedaPedido)}</p></div>
+        <div><p className="text-xs text-muted-foreground">Saldo</p><p className={`font-semibold ${saldo > 0 ? 'text-warning' : 'text-success'}`}>{formatMoney(saldo, monedaPedido)}</p></div>
+        {diferenciaFavor > 0 && (
+          <div><p className="text-xs text-muted-foreground">A favor</p><p className="font-semibold text-success">{formatMoney(diferenciaFavor, monedaPedido)}</p></div>
+        )}
       </div>
       {!!pedido.items?.length && (
         <div className="rounded-lg border border-border overflow-hidden">
@@ -167,7 +175,7 @@ function FilaDetalle({ id }: { id: string }) {
                 {vinculos.map(v => (
                   <tr key={v.id} className="hover:bg-surface-2/50">
                     <td className="px-3 py-2 text-muted-foreground font-mono">{v.movimiento_id.slice(0, 8)}…</td>
-                    <td className="px-3 py-2 text-right text-white">{formatMoney(v.monto_aplicado)}</td>
+                    <td className="px-3 py-2 text-right text-white">{formatMoney(montoVinculoEnMonedaPedido(v, pedido, movimientos, false), monedaPedido)}</td>
                     <td className="px-3 py-2 text-muted-foreground">{v.notas ?? '—'}</td>
                   </tr>
                 ))}

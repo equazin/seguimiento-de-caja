@@ -23,8 +23,10 @@ import {
   calcularSaldoPendiente,
   estaVencido,
   limpiarNotaRetencion,
-  montoCanceladoVinculo,
+  montoVinculoEnMonedaPedido,
   obtenerRetencionGanancias,
+  totalCanceladoEnMonedaPedido,
+  totalPedidoEnMonedaPrincipal,
   venceProximamente,
 } from '@/lib/vinculos'
 import { toast } from 'sonner'
@@ -169,11 +171,17 @@ function FilaDetalle({ id }: { id: string }) {
   if (!detalle) return (
     <div className="py-4 text-center text-sm text-muted-foreground">Cargando...</div>
   )
-  const { pedido, vinculos } = detalle
-  const totalCobrado = vinculos.reduce((s, v) => s + v.monto_aplicado, 0)
-  const totalRetenciones = vinculos.reduce((s, v) => s + obtenerRetencionGanancias(v), 0)
-  const totalCancelado = vinculos.reduce((s, v) => s + montoCanceladoVinculo(v), 0)
-  const saldo = calcularSaldoPendiente(pedido, vinculos)
+  const { pedido, vinculos, movimientos } = detalle
+  const monedaPedido = pedido.monto_total_usd != null && Number(pedido.monto_total_usd) > 0 ? 'USD' : 'ARS'
+  const totalCobrado = vinculos.reduce((s, v) => s + montoVinculoEnMonedaPedido(v, pedido, movimientos, false), 0)
+  const totalRetenciones = vinculos.reduce((s, v) => {
+    const retencion = obtenerRetencionGanancias(v)
+    if (retencion <= 0) return s
+    return s + montoVinculoEnMonedaPedido({ ...v, monto_aplicado: 0 }, pedido, movimientos)
+  }, 0)
+  const totalCancelado = totalCanceladoEnMonedaPedido(pedido, vinculos, movimientos)
+  const saldo = calcularSaldoPendiente(pedido, vinculos, movimientos)
+  const diferenciaFavor = Math.max(0, totalCancelado - totalPedidoEnMonedaPrincipal(pedido))
 
   return (
     <div className="px-6 pb-4 pt-2 space-y-3">
@@ -183,28 +191,34 @@ function FilaDetalle({ id }: { id: string }) {
       <div className="flex gap-6 text-sm">
         <div>
           <p className="text-xs text-muted-foreground">Total</p>
-          <p className="font-semibold text-white">{formatMoney(pedido.monto_total)}</p>
+          <p className="font-semibold text-white">{formatMoney(totalPedidoEnMonedaPrincipal(pedido), monedaPedido)}</p>
         </div>
         <div>
           <p className="text-xs text-muted-foreground">Cobrado</p>
-          <p className="font-semibold text-success">{formatMoney(totalCobrado)}</p>
+          <p className="font-semibold text-success">{formatMoney(totalCobrado, monedaPedido)}</p>
         </div>
         {totalRetenciones > 0 && (
           <div>
             <p className="text-xs text-muted-foreground">Retenciones</p>
-            <p className="font-semibold text-warning">{formatMoney(totalRetenciones)}</p>
+            <p className="font-semibold text-warning">{formatMoney(totalRetenciones, monedaPedido)}</p>
           </div>
         )}
         {totalRetenciones > 0 && (
           <div>
             <p className="text-xs text-muted-foreground">Cancelado</p>
-            <p className="font-semibold text-white">{formatMoney(totalCancelado)}</p>
+            <p className="font-semibold text-white">{formatMoney(totalCancelado, monedaPedido)}</p>
           </div>
         )}
         <div>
           <p className="text-xs text-muted-foreground">Saldo</p>
-          <p className={`font-semibold ${saldo > 0 ? 'text-warning' : 'text-success'}`}>{formatMoney(saldo)}</p>
+          <p className={`font-semibold ${saldo > 0 ? 'text-warning' : 'text-success'}`}>{formatMoney(saldo, monedaPedido)}</p>
         </div>
+        {diferenciaFavor > 0 && (
+          <div>
+            <p className="text-xs text-muted-foreground">A favor</p>
+            <p className="font-semibold text-success">{formatMoney(diferenciaFavor, monedaPedido)}</p>
+          </div>
+        )}
       </div>
       {vinculos.length > 0 && (
         <div className="rounded-lg border border-border overflow-hidden">
@@ -221,7 +235,7 @@ function FilaDetalle({ id }: { id: string }) {
               {vinculos.map(v => (
                 <tr key={v.id} className="hover:bg-surface-2/50">
                   <td className="px-3 py-2 text-muted-foreground font-mono">{v.movimiento_id.slice(0, 8)}…</td>
-                  <td className="px-3 py-2 text-right text-white">{formatMoney(v.monto_aplicado)}</td>
+                  <td className="px-3 py-2 text-right text-white">{formatMoney(montoVinculoEnMonedaPedido(v, pedido, movimientos, false), monedaPedido)}</td>
                   <td className="px-3 py-2 text-right text-warning">
                     {obtenerRetencionGanancias(v) > 0 ? formatMoney(obtenerRetencionGanancias(v)) : '—'}
                   </td>

@@ -1,10 +1,60 @@
 import { supabase } from '@/db/schema'
-import type { EstadoPedidoCompra, EstadoPedidoVenta, MovimientoVinculo, PedidoCompra, PedidoVenta } from '@/db/schema'
+import type { EstadoPedidoCompra, EstadoPedidoVenta, Movimiento, MovimientoVinculo, PedidoCompra, PedidoVenta } from '@/db/schema'
 import { notifyDataChanged, useSupabaseQuery } from '@/hooks/useSupabaseQuery'
-import { calcularEstadoCompra, calcularEstadoVenta, montoCanceladoVinculo } from '@/lib/vinculos'
+import {
+  calcularEstadoCompra,
+  calcularEstadoVenta,
+  calcularSaldoPendiente,
+  type MovimientosPorId,
+} from '@/lib/vinculos'
 import { v4 as uuidv4 } from 'uuid'
 
 type TablaPedidos = 'pedidos_compra' | 'pedidos_venta'
+
+async function cargarMovimientosVinculos(vinculos: MovimientoVinculo[]): Promise<MovimientosPorId> {
+  const movimientoIds = [...new Set(vinculos.map(v => v.movimiento_id).filter(Boolean))]
+  if (movimientoIds.length === 0) return new Map()
+  const { data, error } = await supabase
+    .from('movimientos')
+    .select('id,moneda_principal,tipo_cambio')
+    .in('id', movimientoIds)
+  if (error) throw error
+  return new Map(((data ?? []) as Movimiento[]).map(m => [m.id, m]))
+}
+
+async function aplicarEstadosCalculadosCompra(pedidos: PedidoCompra[]): Promise<PedidoCompra[]> {
+  if (pedidos.length === 0) return pedidos
+  const ids = pedidos.map(p => p.id)
+  const { data, error } = await supabase
+    .from('movimiento_vinculos')
+    .select('*')
+    .in('pedido_compra_id', ids)
+  if (error) throw error
+  const vinculos = (data ?? []) as MovimientoVinculo[]
+  const movimientos = await cargarMovimientosVinculos(vinculos)
+  return pedidos.map(pedido => {
+    if (pedido.estado === 'cancelado') return pedido
+    const pvinculos = vinculos.filter(v => v.pedido_compra_id === pedido.id)
+    return { ...pedido, estado: calcularEstadoCompra(pedido, pvinculos, movimientos) }
+  })
+}
+
+async function aplicarEstadosCalculadosVenta(pedidos: PedidoVenta[]): Promise<PedidoVenta[]> {
+  if (pedidos.length === 0) return pedidos
+  const ids = pedidos.map(p => p.id)
+  const { data, error } = await supabase
+    .from('movimiento_vinculos')
+    .select('*')
+    .in('pedido_venta_id', ids)
+  if (error) throw error
+  const vinculos = (data ?? []) as MovimientoVinculo[]
+  const movimientos = await cargarMovimientosVinculos(vinculos)
+  return pedidos.map(pedido => {
+    if (pedido.estado === 'cancelado') return pedido
+    const pvinculos = vinculos.filter(v => v.pedido_venta_id === pedido.id)
+    return { ...pedido, estado: calcularEstadoVenta(pedido, pvinculos, movimientos) }
+  })
+}
 
 async function siguienteNumeroPedido(tabla: TablaPedidos, prefijo: string): Promise<string> {
   const { data, error } = await supabase
@@ -51,14 +101,14 @@ export function usePedidosCompra(filtros?: FiltrosPedidoCompra) {
       .select('*')
       .order('fecha', { ascending: false })
 
-    if (filtros?.estado) q = q.eq('estado', filtros.estado)
     if (filtros?.fechaDesde) q = q.gte('fecha', filtros.fechaDesde)
     if (filtros?.fechaHasta) q = q.lte('fecha', filtros.fechaHasta)
 
     const { data, error } = await q
     if (error) throw error
 
-    let items = data ?? []
+    let items = await aplicarEstadosCalculadosCompra((data ?? []) as PedidoCompra[])
+    if (filtros?.estado) items = items.filter(p => p.estado === filtros.estado)
     if (filtros?.proveedor) {
       const busq = filtros.proveedor.toLowerCase()
       items = items.filter(p =>
@@ -78,7 +128,8 @@ export function usePedidoCompraDetalle(id: string | null) {
       supabase.from('movimiento_vinculos').select('*').eq('pedido_compra_id', id),
     ])
     if (!pedido) return null
-    return { pedido, vinculos: vinculos ?? [] }
+    const movimientos = await cargarMovimientosVinculos((vinculos ?? []) as MovimientoVinculo[])
+    return { pedido, vinculos: vinculos ?? [], movimientos }
   }, [id], ['pedidos_compra', 'movimiento_vinculos'])
 }
 
@@ -115,14 +166,14 @@ export function usePedidosVenta(filtros?: FiltrosPedidoVenta) {
       .select('*')
       .order('fecha', { ascending: false })
 
-    if (filtros?.estado) q = q.eq('estado', filtros.estado)
     if (filtros?.fechaDesde) q = q.gte('fecha', filtros.fechaDesde)
     if (filtros?.fechaHasta) q = q.lte('fecha', filtros.fechaHasta)
 
     const { data, error } = await q
     if (error) throw error
 
-    let items = data ?? []
+    let items = await aplicarEstadosCalculadosVenta((data ?? []) as PedidoVenta[])
+    if (filtros?.estado) items = items.filter(p => p.estado === filtros.estado)
     if (filtros?.cliente) {
       const busq = filtros.cliente.toLowerCase()
       items = items.filter(p =>
@@ -142,7 +193,8 @@ export function usePedidoVentaDetalle(id: string | null) {
       supabase.from('movimiento_vinculos').select('*').eq('pedido_venta_id', id),
     ])
     if (!pedido) return null
-    return { pedido, vinculos: vinculos ?? [] }
+    const movimientos = await cargarMovimientosVinculos((vinculos ?? []) as MovimientoVinculo[])
+    return { pedido, vinculos: vinculos ?? [], movimientos }
   }, [id], ['pedidos_venta', 'movimiento_vinculos'])
 }
 
@@ -303,14 +355,15 @@ export async function recalcularEstadoPedido(id: string, tipo: 'compra' | 'venta
 
   const [{ data: pedido }, { data: vinculos }] = await Promise.all([
     supabase.from(tabla).select('*').eq('id', id).maybeSingle(),
-    supabase.from('movimiento_vinculos').select('monto_aplicado,notas').eq(fk, id),
+    supabase.from('movimiento_vinculos').select('*').eq(fk, id),
   ])
 
   if (!pedido || pedido.estado === 'cancelado') return
+  const movimientos = await cargarMovimientosVinculos((vinculos ?? []) as MovimientoVinculo[])
 
   const nuevoEstado = tipo === 'compra'
-    ? calcularEstadoCompra(pedido as PedidoCompra, (vinculos ?? []) as MovimientoVinculo[])
-    : calcularEstadoVenta(pedido as PedidoVenta, (vinculos ?? []) as MovimientoVinculo[])
+    ? calcularEstadoCompra(pedido as PedidoCompra, (vinculos ?? []) as MovimientoVinculo[], movimientos)
+    : calcularEstadoVenta(pedido as PedidoVenta, (vinculos ?? []) as MovimientoVinculo[], movimientos)
 
   if (nuevoEstado !== pedido.estado) {
     await supabase.from(tabla).update({ estado: nuevoEstado }).eq('id', id)
@@ -327,17 +380,16 @@ export async function getTopPedidosPendientes() {
   ])
 
   const vinculos = vinculosRes.data ?? []
+  const movimientos = await cargarMovimientosVinculos(vinculos as MovimientoVinculo[])
 
   const compras = (comprasRes.data ?? []).map(p => {
     const pvinculos = vinculos.filter(v => v.pedido_compra_id === p.id)
-    const totalPagado = pvinculos.reduce((s, v) => s + montoCanceladoVinculo(v), 0)
-    return { ...p, saldo_pendiente: Math.max(0, p.monto_total - totalPagado) }
+    return { ...p, saldo_pendiente: calcularSaldoPendiente(p, pvinculos as MovimientoVinculo[], movimientos) }
   }).sort((a, b) => b.saldo_pendiente - a.saldo_pendiente).slice(0, 5)
 
   const ventas = (ventasRes.data ?? []).map(p => {
     const pvinculos = vinculos.filter(v => v.pedido_venta_id === p.id)
-    const totalCobrado = pvinculos.reduce((s, v) => s + montoCanceladoVinculo(v), 0)
-    return { ...p, saldo_pendiente: Math.max(0, p.monto_total - totalCobrado) }
+    return { ...p, saldo_pendiente: calcularSaldoPendiente(p, pvinculos as MovimientoVinculo[], movimientos) }
   }).sort((a, b) => b.saldo_pendiente - a.saldo_pendiente).slice(0, 5)
 
   return { compras, ventas }
