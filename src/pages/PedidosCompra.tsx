@@ -15,7 +15,7 @@ import { Dialog, ConfirmDialog } from '@/components/ui/Dialog'
 import { SkeletonTable } from '@/components/ui/Skeleton'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { RowActionsMenu } from '@/components/ui/RowActionsMenu'
-import { ImportarDesdePedidoDialog } from '@/components/ventas/ImportarDesdePedidoDialog'
+import { ImportarDesdeDocumentoDialog } from '@/components/ventas/ImportarDesdeDocumentoDialog'
 import { formatMoney, formatDate } from '@/lib/formatters'
 import {
   ESTADO_COMPRA_CONFIG,
@@ -24,7 +24,7 @@ import {
   venceProximamente,
 } from '@/lib/vinculos'
 import { toast } from 'sonner'
-import type { EstadoPedidoCompra, PedidoCompra, PedidoItem } from '@/db/schema'
+import type { Documento, EstadoPedidoCompra, PedidoCompra, PedidoItem } from '@/db/schema'
 import type { ItemDraft } from '@/lib/documentos'
 
 const ALICUOTAS_IVA = [0, 2.5, 5, 10.5, 21, 27]
@@ -92,11 +92,16 @@ function newForm(): FormState {
   }
 }
 
-function itemsFromDrafts(items: ItemDraft[]): FormItemState[] {
+function itemsFromDocumentoDrafts(items: ItemDraft[], documento: Documento): FormItemState[] {
+  const tipoCambio = Number(documento.tipo_cambio) > 0 ? Number(documento.tipo_cambio) : 1
   return items.map(item => newItem({
     producto_id: item.producto_id ?? '',
     cantidad: String(item.cantidad || 1),
-    precio_unitario_usd: String(item.precio_unitario || ''),
+    precio_unitario_usd: String(
+      documento.moneda === 'USD'
+        ? item.precio_unitario || ''
+        : round2((Number(item.precio_unitario) || 0) / tipoCambio)
+    ),
     alicuota_iva: String(item.alicuota_iva ?? 0),
     descripcion: item.descripcion ?? '',
   }))
@@ -305,22 +310,22 @@ function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
     })
   }
 
-  function handleImportPedido(pedidoImportado: PedidoCompra, itemsImportados: ItemDraft[], proveedorId: string | null) {
-    const proveedorIdFinal = proveedorId ?? pedidoImportado.proveedor_id ?? ''
+  function handleImportDocumento(documentoImportado: Documento, itemsImportados: ItemDraft[], proveedorId: string | null) {
+    const proveedorIdFinal = proveedorId ?? documentoImportado.proveedor_id ?? ''
     const proveedor = proveedorIdFinal
       ? proveedores.find(p => p.id === proveedorIdFinal)
       : null
     setForm(prev => ({
       ...prev,
       proveedor_id: proveedorIdFinal,
-      proveedor: proveedor?.razon_social ?? pedidoImportado.proveedor ?? prev.proveedor,
-      fecha_vencimiento: prev.fecha_vencimiento || (pedidoImportado.fecha_vencimiento ?? ''),
-      tipo_cambio: pedidoImportado.tipo_cambio != null
-        ? String(pedidoImportado.tipo_cambio)
+      proveedor: proveedor?.razon_social ?? prev.proveedor,
+      fecha_vencimiento: prev.fecha_vencimiento || (documentoImportado.fecha_vencimiento ?? ''),
+      tipo_cambio: documentoImportado.tipo_cambio != null
+        ? String(documentoImportado.tipo_cambio)
         : prev.tipo_cambio,
-      descripcion: prev.descripcion || pedidoImportado.descripcion || `Importado de ${pedidoImportado.numero}`,
-      items: itemsFromDrafts(itemsImportados),
-      notas: prev.notas || pedidoImportado.notas || '',
+      descripcion: prev.descripcion || documentoImportado.observaciones || `Importado de ${documentoImportado.numero_interno}`,
+      items: itemsFromDocumentoDrafts(itemsImportados, documentoImportado),
+      notas: prev.notas || documentoImportado.observaciones || '',
     }))
     setErrors({})
   }
@@ -634,15 +639,14 @@ function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
         </div>
       </form>
     </Dialog>
-    <ImportarDesdePedidoDialog
+    <ImportarDesdeDocumentoDialog
       open={importPedidoOpen}
       tipoOperacion="compra"
+      tipoDestino="pedido"
+      tipoOrigen="pedido"
       contactoId={form.proveedor_id || null}
-      excludePedidoId={pedido?.id ?? null}
       onClose={() => setImportPedidoOpen(false)}
-      onImport={(pedidoImportado, itemsImportados, proveedorId) => {
-        handleImportPedido(pedidoImportado as PedidoCompra, itemsImportados, proveedorId)
-      }}
+      onImport={handleImportDocumento}
     />
     </>
   )
