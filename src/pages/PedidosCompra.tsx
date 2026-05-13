@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react'
-import { Plus, AlertTriangle, Clock, ChevronDown, ChevronRight, Trash2, Edit2, X, Truck } from 'lucide-react'
+import { Plus, AlertTriangle, Clock, ChevronDown, ChevronRight, Trash2, Edit2, X, Truck, ClipboardList } from 'lucide-react'
 import {
   usePedidosCompra,
   crearPedidoCompra,
@@ -15,6 +15,7 @@ import { Dialog, ConfirmDialog } from '@/components/ui/Dialog'
 import { SkeletonTable } from '@/components/ui/Skeleton'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { RowActionsMenu } from '@/components/ui/RowActionsMenu'
+import { ImportarDesdePedidoDialog } from '@/components/ventas/ImportarDesdePedidoDialog'
 import { formatMoney, formatDate } from '@/lib/formatters'
 import {
   ESTADO_COMPRA_CONFIG,
@@ -24,6 +25,7 @@ import {
 } from '@/lib/vinculos'
 import { toast } from 'sonner'
 import type { EstadoPedidoCompra, PedidoCompra, PedidoItem } from '@/db/schema'
+import type { ItemDraft } from '@/lib/documentos'
 
 const ALICUOTAS_IVA = [0, 2.5, 5, 10.5, 21, 27]
 
@@ -88,6 +90,16 @@ function newForm(): FormState {
     items: [newItem()],
     notas: '',
   }
+}
+
+function itemsFromDrafts(items: ItemDraft[]): FormItemState[] {
+  return items.map(item => newItem({
+    producto_id: item.producto_id ?? '',
+    cantidad: String(item.cantidad || 1),
+    precio_unitario_usd: String(item.precio_unitario || ''),
+    alicuota_iva: String(item.alicuota_iva ?? 0),
+    descripcion: item.descripcion ?? '',
+  }))
 }
 
 // ─── Detalle expandible ───────────────────────────────────────────────────────
@@ -182,6 +194,7 @@ function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
   const [form, setForm] = useState<FormState>(() => newForm())
   const [errors, setErrors] = useState<Record<string, string | undefined>>({})
   const [loading, setLoading] = useState(false)
+  const [importPedidoOpen, setImportPedidoOpen] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -292,6 +305,26 @@ function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
     })
   }
 
+  function handleImportPedido(pedidoImportado: PedidoCompra, itemsImportados: ItemDraft[], proveedorId: string | null) {
+    const proveedorIdFinal = proveedorId ?? pedidoImportado.proveedor_id ?? ''
+    const proveedor = proveedorIdFinal
+      ? proveedores.find(p => p.id === proveedorIdFinal)
+      : null
+    setForm(prev => ({
+      ...prev,
+      proveedor_id: proveedorIdFinal,
+      proveedor: proveedor?.razon_social ?? pedidoImportado.proveedor ?? prev.proveedor,
+      fecha_vencimiento: prev.fecha_vencimiento || (pedidoImportado.fecha_vencimiento ?? ''),
+      tipo_cambio: pedidoImportado.tipo_cambio != null
+        ? String(pedidoImportado.tipo_cambio)
+        : prev.tipo_cambio,
+      descripcion: prev.descripcion || pedidoImportado.descripcion || `Importado de ${pedidoImportado.numero}`,
+      items: itemsFromDrafts(itemsImportados),
+      notas: prev.notas || pedidoImportado.notas || '',
+    }))
+    setErrors({})
+  }
+
   const tcNum = parseDecimal(form.tipo_cambio)
   const itemsCalculados = useMemo(() => {
     return form.items.map(item => {
@@ -396,6 +429,7 @@ function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
   }
 
   return (
+    <>
     <Dialog open={open} onClose={onClose} title={pedido ? 'Editar pedido de compra' : 'Nuevo pedido de compra'} size="xl">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
@@ -446,9 +480,14 @@ function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Items</p>
-            <Button type="button" size="sm" variant="secondary" onClick={addItem}>
-              <Plus size={14} /> Agregar item
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" size="sm" variant="secondary" onClick={() => setImportPedidoOpen(true)}>
+                <ClipboardList size={14} /> Importar pedido
+              </Button>
+              <Button type="button" size="sm" variant="secondary" onClick={addItem}>
+                <Plus size={14} /> Agregar item
+              </Button>
+            </div>
           </div>
           <div className="overflow-x-auto rounded-lg border border-border">
             <table className="w-full min-w-[840px] text-sm">
@@ -595,6 +634,17 @@ function PedidoCompraModal({ open, onClose, pedido }: ModalProps) {
         </div>
       </form>
     </Dialog>
+    <ImportarDesdePedidoDialog
+      open={importPedidoOpen}
+      tipoOperacion="compra"
+      contactoId={form.proveedor_id || null}
+      excludePedidoId={pedido?.id ?? null}
+      onClose={() => setImportPedidoOpen(false)}
+      onImport={(pedidoImportado, itemsImportados, proveedorId) => {
+        handleImportPedido(pedidoImportado as PedidoCompra, itemsImportados, proveedorId)
+      }}
+    />
+    </>
   )
 }
 

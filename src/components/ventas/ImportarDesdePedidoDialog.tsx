@@ -22,6 +22,7 @@ interface ImportarDesdePedidoDialogProps {
   open: boolean
   tipoOperacion: TipoOperacion
   contactoId: string | null
+  excludePedidoId?: string | null
   onClose: () => void
   onImport: (
     pedido: Pedido,
@@ -96,6 +97,7 @@ export function ImportarDesdePedidoDialog({
   open,
   tipoOperacion,
   contactoId,
+  excludePedidoId,
   onClose,
   onImport,
 }: ImportarDesdePedidoDialogProps) {
@@ -112,6 +114,7 @@ export function ImportarDesdePedidoDialog({
     const lista = (pedidosRaw ?? []) as Pedido[]
     const filtrado = lista
       .filter(p => p.estado !== 'cancelado')
+      .filter(p => p.id !== excludePedidoId)
       .filter(p => pedidoMatchesContacto(p, contactoId))
       .filter(p => {
         const q = busqueda.trim().toLowerCase()
@@ -142,7 +145,7 @@ export function ImportarDesdePedidoDialog({
         estadoColor: cfg.color,
       }
     })
-  }, [pedidosRaw, busqueda, contactoId])
+  }, [pedidosRaw, busqueda, contactoId, excludePedidoId])
 
   function handleImport(pedido: Pedido) {
     const items = itemsDesdePedido(pedido)
