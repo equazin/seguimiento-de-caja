@@ -74,8 +74,8 @@ export async function cobrarEcheq(
   fechaCobro: string,
   movimientoPadre: Movimiento
 ): Promise<void> {
-  const moneda: 'ARS' | 'USD' = movimientoPadre.moneda_principal === 'USD' ? 'USD' : 'ARS'
-  const cuentaVirtual = cuentaEcheqsId(moneda)
+  const moneda: 'ARS' | 'USD' = 'ARS'
+  const cuentaVirtual = cuentaEcheqsId()
   const now = new Date().toISOString()
   const esIngreso = movimientoPadre.tipo === 'ingreso'
   const monto = echeq.monto
@@ -84,8 +84,8 @@ export async function cobrarEcheq(
 
   const baseMovimiento = {
     fecha: fechaCobro,
-    monto_ars: moneda === 'ARS' ? monto : 0,
-    monto_usd: moneda === 'USD' ? monto : null,
+    monto_ars: monto,
+    monto_usd: null,
     moneda_principal: moneda,
     categoria_id: movimientoPadre.categoria_id,
     subcategoria: 'Cobro e-cheq',

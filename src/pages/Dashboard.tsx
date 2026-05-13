@@ -187,11 +187,7 @@ export function Dashboard({ onEditMovimiento }: Props) {
             valor={data.echeqsCartera.ingresosArs}
             icono={ArrowDownToLine}
             variante="ingreso"
-            subtitulo={
-              data.echeqsCartera.ingresosUsd > 0
-                ? `${data.echeqsCartera.countIngresos} pendientes · USD ${data.echeqsCartera.ingresosUsd.toFixed(2)}`
-                : `${data.echeqsCartera.countIngresos} pendientes`
-            }
+            subtitulo={`${data.echeqsCartera.countIngresos} pendientes`}
             moneda="ARS"
           />
           <KPICard
@@ -199,11 +195,7 @@ export function Dashboard({ onEditMovimiento }: Props) {
             valor={data.echeqsCartera.egresosArs}
             icono={ArrowUpFromLine}
             variante="egreso"
-            subtitulo={
-              data.echeqsCartera.egresosUsd > 0
-                ? `${data.echeqsCartera.countEgresos} pendientes · USD ${data.echeqsCartera.egresosUsd.toFixed(2)}`
-                : `${data.echeqsCartera.countEgresos} pendientes`
-            }
+            subtitulo={`${data.echeqsCartera.countEgresos} pendientes`}
             moneda="ARS"
           />
         </div>

@@ -354,6 +354,14 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
     }
   }, [form.tipo])
 
+  // Si cambia la cuenta a USD y el metodo era echeq, resetear metodo
+  useEffect(() => {
+    if (esUSD && form.metodo_pago === 'echeq') {
+      setForm(f => ({ ...f, metodo_pago: 'transferencia' }))
+      setEcheqsForm([])
+    }
+  }, [esUSD])
+
   const set = (key: keyof FormState, value: string) => {
     setForm(f => ({ ...f, [key]: value }))
     setErrors(e => ({ ...e, [key]: undefined }))
@@ -457,7 +465,7 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
         descripcion: form.descripcion.trim(),
         contacto: form.contacto.trim() || undefined,
         metodo_pago: form.metodo_pago,
-        cuenta_id: form.metodo_pago === 'echeq' ? cuentaEcheqsId(monedaPrincipal) : form.cuenta_id,
+        cuenta_id: form.metodo_pago === 'echeq' ? cuentaEcheqsId() : form.cuenta_id,
         notas: notasMovimientoPrincipal ?? undefined,
       }
 
@@ -661,7 +669,7 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
             required
           >
             <option value="">Seleccionar...</option>
-            {cuentas?.filter(c => c.id !== 'cuenta-echeqs-ars' && c.id !== 'cuenta-echeqs-usd').map(c => (
+            {cuentas?.filter(c => c.id !== 'cuenta-echeqs-ars').map(c => (
               <option key={c.id} value={c.id}>{c.nombre}</option>
             ))}
           </Select>
@@ -670,7 +678,7 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
             value={form.metodo_pago}
             onChange={e => set('metodo_pago', e.target.value as MetodoPago)}
           >
-            {METODOS_PAGO.map(m => (
+            {METODOS_PAGO.filter(m => m.value !== 'echeq' || !esUSD).map(m => (
               <option key={m.value} value={m.value}>{m.icono} {m.label}</option>
             ))}
           </Select>

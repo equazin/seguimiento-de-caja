@@ -14,7 +14,7 @@ import { RowActionsMenu } from '@/components/ui/RowActionsMenu'
 import { formatMoney, formatDate, todayStr } from '@/lib/formatters'
 import { toast } from 'sonner'
 import type { Echeq, EchequEstado, Movimiento } from '@/db/schema'
-import { CUENTA_ECHEQS_ARS_ID, CUENTA_ECHEQS_USD_ID } from '@/lib/constants'
+import { CUENTA_ECHEQS_ARS_ID } from '@/lib/constants'
 
 type FiltroEstado = 'todos' | 'pendiente' | 'esta_semana' | 'vencido' | 'cobrado' | 'rechazado'
 
@@ -340,11 +340,10 @@ export function Echeqs() {
         size="sm"
       >
         {cobroDialog && (() => {
-          const monedaPadre = cobroDialog.movimiento.moneda_principal === 'USD' ? 'USD' : 'ARS'
+          const monedaPadre: 'ARS' | 'USD' = 'ARS'
           const cuentasDisponibles = (cuentas ?? []).filter(c =>
-            c.moneda === monedaPadre &&
-            c.id !== CUENTA_ECHEQS_ARS_ID &&
-            c.id !== CUENTA_ECHEQS_USD_ID
+            c.moneda === 'ARS' &&
+            c.id !== CUENTA_ECHEQS_ARS_ID
           )
           return (
             <div className="space-y-4">

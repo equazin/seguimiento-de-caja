@@ -41,7 +41,7 @@ export async function getSaldoCuenta(cuentaId: string): Promise<number> {
   return cuenta.saldo_inicial + totalIngresos - totalEgresos
 }
 
-const CUENTAS_VIRTUALES_IDS = ['cuenta-echeqs-ars', 'cuenta-echeqs-usd']
+const CUENTAS_VIRTUALES_IDS = ['cuenta-echeqs-ars']
 
 export async function getSaldoTotalARS(): Promise<number> {
   const { data: cuentas } = await supabase.from('cuentas').select('id, moneda').eq('activa', true)

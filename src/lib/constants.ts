@@ -28,10 +28,9 @@ export const CUENTAS_DEFAULT: Omit<Cuenta, never>[] = [
 ]
 
 export const CUENTA_ECHEQS_ARS_ID = 'cuenta-echeqs-ars'
-export const CUENTA_ECHEQS_USD_ID = 'cuenta-echeqs-usd'
 
-export function cuentaEcheqsId(moneda: 'ARS' | 'USD'): string {
-  return moneda === 'USD' ? CUENTA_ECHEQS_USD_ID : CUENTA_ECHEQS_ARS_ID
+export function cuentaEcheqsId(): string {
+  return CUENTA_ECHEQS_ARS_ID
 }
 
 export const METODOS_PAGO: { value: MetodoPago; label: string; icono: string }[] = [
