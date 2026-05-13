@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { ChevronDown, ChevronUp, Plus, Trash2, Link } from 'lucide-react'
+import { ChevronDown, ChevronUp, Plus, Trash2, Link, Split } from 'lucide-react'
+import { v4 as uuidv4 } from 'uuid'
 import { Dialog } from '@/components/ui/Dialog'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
@@ -9,9 +10,12 @@ import { crearMovimiento, actualizarMovimiento } from '@/hooks/useMovimientos'
 import { usePedidosCompra, usePedidosVenta, reemplazarVinculosMovimiento, useVinculos } from '@/hooks/usePedidos'
 import { getContactosUsados } from '@/db/queries'
 import {
+  extraerSplitId,
   limpiarNotaRetencion,
+  limpiarNotaSplit,
   obtenerRetencionGanancias,
   serializarNotaRetencion,
+  serializarNotaSplit,
   validarVinculos,
 } from '@/lib/vinculos'
 import { METODOS_PAGO } from '@/lib/constants'
@@ -38,6 +42,20 @@ interface FormState {
   metodo_pago: MetodoPago
   cuenta_id: string
   notas: string
+}
+
+interface SplitForm {
+  cuenta_id: string
+  monto_ars: string
+  monto_usd: string
+  metodo_pago: MetodoPago
+}
+
+const SPLIT_INITIAL: SplitForm = {
+  cuenta_id: '',
+  monto_ars: '',
+  monto_usd: '',
+  metodo_pago: 'efectivo',
 }
 
 interface VinculoForm {
@@ -219,6 +237,8 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
   const [mostrarVinculos, setMostrarVinculos] = useState(false)
   const [vinculosForm, setVinculosForm] = useState<VinculoForm[]>([])
   const [busquedaVinculo, setBusquedaVinculo] = useState('')
+  const [splitActivo, setSplitActivo] = useState(false)
+  const [splitForm, setSplitForm] = useState<SplitForm>(SPLIT_INITIAL)
   const contactoRef = useRef<HTMLInputElement>(null)
 
   const categorias = useCategorias()
@@ -231,6 +251,13 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
   const esUSD = monedaPrincipal === 'USD'
   const montoPrincipal = esUSD ? form.monto_usd : form.monto_ars
   const montoPrincipalNum = Number(montoPrincipal) || 0
+
+  const cuentaSplit = cuentas?.find(c => c.id === splitForm.cuenta_id)
+  const monedaSplit: MonedaCuenta = cuentaSplit?.moneda ?? 'ARS'
+  const splitEsUSD = monedaSplit === 'USD'
+  const montoSplit = splitEsUSD ? splitForm.monto_usd : splitForm.monto_ars
+  const montoSplitNum = Number(montoSplit) || 0
+  const edicionEsSplit = movimiento ? extraerSplitId(movimiento.notas) !== null : false
 
   useEffect(() => {
     if (!open) return
@@ -247,7 +274,7 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
         contacto: movimiento.contacto ?? '',
         metodo_pago: movimiento.metodo_pago,
         cuenta_id: movimiento.cuenta_id,
-        notas: movimiento.notas ?? '',
+        notas: limpiarNotaSplit(movimiento.notas),
       })
     } else {
       setForm(f => ({
@@ -260,6 +287,8 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
     setMostrarVinculos(false)
     setVinculosForm([])
     setBusquedaVinculo('')
+    setSplitActivo(false)
+    setSplitForm(SPLIT_INITIAL)
     getContactosUsados().then(setContactosSugeridos)
   }, [open, movimiento])
 
@@ -320,6 +349,21 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
     const montoUsd = Number(form.monto_usd)
     const montoBaseVinculos = esUSD ? montoUsd : montoArs
 
+    if (splitActivo && !movimiento) {
+      if (!splitForm.cuenta_id) {
+        toast.error('Seleccioná la segunda cuenta para el pago dividido')
+        return
+      }
+      if (splitForm.cuenta_id === form.cuenta_id) {
+        toast.error('La segunda cuenta debe ser distinta a la principal')
+        return
+      }
+      if (montoSplitNum <= 0) {
+        toast.error('Ingresá el monto de la segunda cuenta')
+        return
+      }
+    }
+
     if (mostrarVinculos && vinculosForm.length > 0) {
       const validacion = validarVinculos(montoBaseVinculos, vinculosForm.map(v => ({ monto_aplicado: Number(v.monto_aplicado) || 0 })), monedaPrincipal)
       if (!validacion.valido) {
@@ -338,6 +382,12 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
 
     setLoading(true)
     try {
+      const splitId = splitActivo && !movimiento ? uuidv4() : null
+      const notasBase = form.notas.trim() || null
+      const notasMovimientoPrincipal = splitId
+        ? serializarNotaSplit(notasBase, splitId, 1)
+        : (notasBase || undefined)
+
       const data = {
         fecha: form.fecha,
         tipo: form.tipo,
@@ -351,7 +401,7 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
         contacto: form.contacto.trim() || undefined,
         metodo_pago: form.metodo_pago,
         cuenta_id: form.cuenta_id,
-        notas: form.notas.trim() || undefined,
+        notas: notasMovimientoPrincipal ?? undefined,
       }
 
       let movimientoId: string
@@ -362,7 +412,30 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
       } else {
         const created = await crearMovimiento(data)
         movimientoId = created.id
-        toast.success('Movimiento creado')
+        toast.success(splitId ? 'Movimientos creados' : 'Movimiento creado')
+      }
+
+      let movimientoSplitId: string | null = null
+      if (splitId) {
+        const splitMontoArs = splitEsUSD ? 0 : Number(splitForm.monto_ars)
+        const splitMontoUsd = splitEsUSD ? Number(splitForm.monto_usd) : undefined
+        const splitData = {
+          fecha: form.fecha,
+          tipo: form.tipo,
+          monto_ars: splitMontoArs,
+          monto_usd: splitMontoUsd,
+          tipo_cambio: form.tipo_cambio ? Number(form.tipo_cambio) : undefined,
+          moneda_principal: monedaSplit,
+          categoria_id: form.categoria_id,
+          subcategoria: form.subcategoria || undefined,
+          descripcion: form.descripcion.trim(),
+          contacto: form.contacto.trim() || undefined,
+          metodo_pago: splitForm.metodo_pago,
+          cuenta_id: splitForm.cuenta_id,
+          notas: serializarNotaSplit(notasBase, splitId, 2) ?? undefined,
+        }
+        const createdSplit = await crearMovimiento(splitData)
+        movimientoSplitId = createdSplit.id
       }
 
       if (mostrarVinculos) {
@@ -381,6 +454,17 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
             ),
           }))
         await reemplazarVinculosMovimiento(movimientoId, nuevosVinculos)
+
+        // Si hay split, replicamos vínculo al pedido en el segundo movimiento por el monto del split
+        if (movimientoSplitId && nuevosVinculos.length > 0) {
+          const splitVinculos = nuevosVinculos.map(v => ({
+            pedido_compra_id: v.pedido_compra_id,
+            pedido_venta_id: v.pedido_venta_id,
+            monto_aplicado: montoSplitNum,
+            notas: v.notas,
+          }))
+          await reemplazarVinculosMovimiento(movimientoSplitId, splitVinculos)
+        }
       }
 
       onClose()
@@ -514,6 +598,75 @@ export function MovimientoModal({ open, onClose, movimiento }: Props) {
             ))}
           </Select>
         </div>
+
+        {/* Split: pagar con segunda cuenta */}
+        {!movimiento && (
+          <div className="rounded-lg border border-border overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setSplitActivo(v => !v)}
+              className="w-full flex items-center justify-between px-4 py-3 text-sm text-muted-foreground hover:bg-surface-2 transition-colors"
+            >
+              <span className="flex items-center gap-2">
+                <Split size={14} />
+                Dividir pago en 2 cuentas
+              </span>
+              {splitActivo ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
+            {splitActivo && (
+              <div className="border-t border-border p-4 space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  Se crearán 2 movimientos vinculados con la misma descripción/fecha/contacto.
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <Select
+                    label="Segunda cuenta"
+                    value={splitForm.cuenta_id}
+                    onChange={e => setSplitForm(f => ({ ...f, cuenta_id: e.target.value }))}
+                  >
+                    <option value="">Seleccionar...</option>
+                    {cuentas?.filter(c => c.id !== form.cuenta_id).map(c => (
+                      <option key={c.id} value={c.id}>{c.nombre} ({c.moneda})</option>
+                    ))}
+                  </Select>
+                  <Select
+                    label="Método de pago"
+                    value={splitForm.metodo_pago}
+                    onChange={e => setSplitForm(f => ({ ...f, metodo_pago: e.target.value as MetodoPago }))}
+                  >
+                    {METODOS_PAGO.map(m => (
+                      <option key={m.value} value={m.value}>{m.icono} {m.label}</option>
+                    ))}
+                  </Select>
+                </div>
+                <Input
+                  label={`Monto ${monedaSplit}`}
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder={splitEsUSD ? 'USD 0.00' : '0.00'}
+                  value={splitEsUSD ? splitForm.monto_usd : splitForm.monto_ars}
+                  onChange={e => setSplitForm(f => splitEsUSD
+                    ? { ...f, monto_usd: e.target.value }
+                    : { ...f, monto_ars: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Total pagado: <span className="text-white font-semibold">
+                    {formatMoney(montoPrincipalNum, monedaPrincipal)}
+                  </span> + <span className="text-white font-semibold">
+                    {formatMoney(montoSplitNum, monedaSplit)}
+                  </span>
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+        {edicionEsSplit && (
+          <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-2.5 text-xs text-muted-foreground flex items-center gap-2">
+            <Split size={13} className="text-primary" />
+            Este movimiento es parte de un pago dividido. La división se edita eliminando ambos movimientos.
+          </div>
+        )}
 
         {/* Contacto con autocompletado */}
         <div className="relative">

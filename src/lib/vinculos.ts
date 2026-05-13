@@ -1,6 +1,25 @@
 import type { EstadoPedidoCompra, EstadoPedidoVenta, MonedaCuenta, Movimiento, MovimientoVinculo, PedidoCompra, PedidoVenta } from '@/db/schema'
 
 const RETENCION_GANANCIAS_RE = /\s*\[retencion_ganancias:([0-9]+(?:[\.,][0-9]+)?)\]\s*/i
+const SPLIT_RE = /\s*\[split:([a-zA-Z0-9-]+):([12])\/2\]\s*/i
+
+export function extraerSplitId(notas: string | null | undefined): { splitId: string; parte: 1 | 2 } | null {
+  const match = notas?.match(SPLIT_RE)
+  if (!match) return null
+  const parte = Number(match[2])
+  if (parte !== 1 && parte !== 2) return null
+  return { splitId: match[1], parte }
+}
+
+export function limpiarNotaSplit(notas: string | null | undefined): string {
+  return (notas ?? '').replace(SPLIT_RE, '').trim()
+}
+
+export function serializarNotaSplit(notas: string | null | undefined, splitId: string, parte: 1 | 2): string | null {
+  const limpia = limpiarNotaSplit(notas)
+  const marker = `[split:${splitId}:${parte}/2]`
+  return [limpia, marker].filter(Boolean).join(' ') || null
+}
 
 export function obtenerRetencionGanancias(vinculo: Pick<MovimientoVinculo, 'notas'>): number {
   const match = vinculo.notas?.match(RETENCION_GANANCIAS_RE)

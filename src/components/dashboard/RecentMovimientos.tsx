@@ -58,7 +58,12 @@ export function RecentMovimientos({ movimientos, categorias, onEdit }: Props) {
               </div>
               <div className="flex items-center gap-2">
                 <p className={`text-sm font-semibold ${esIngreso ? 'text-success' : 'text-danger'}`}>
-                  {esIngreso ? '+' : '-'}{formatMoney(m.monto_ars)}
+                  {(() => {
+                    const esUsd = m.moneda_principal === 'USD'
+                    const monto = esUsd ? Number(m.monto_usd ?? 0) : m.monto_ars
+                    const moneda: 'ARS' | 'USD' = esUsd ? 'USD' : 'ARS'
+                    return `${esIngreso ? '+' : '-'}${formatMoney(monto, moneda)}`
+                  })()}
                 </p>
                 <button
                   onClick={event => {

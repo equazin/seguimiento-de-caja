@@ -296,7 +296,12 @@ export function Reportes() {
                     </td>
                     <td className="px-3 py-2.5 text-muted-foreground">{m.contacto ?? '—'}</td>
                     <td className={`px-3 py-2.5 text-right font-semibold ${esIngreso ? 'text-success' : 'text-danger'}`}>
-                      {esIngreso ? '+' : '-'}{formatMoney(m.monto_ars)}
+                      {(() => {
+                        const esUsd = m.moneda_principal === 'USD'
+                        const monto = esUsd ? Number(m.monto_usd ?? 0) : m.monto_ars
+                        const moneda: 'ARS' | 'USD' = esUsd ? 'USD' : 'ARS'
+                        return `${esIngreso ? '+' : '-'}${formatMoney(monto, moneda)}`
+                      })()}
                     </td>
                   </tr>
                 )

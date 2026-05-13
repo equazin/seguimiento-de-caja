@@ -151,8 +151,25 @@ export async function getConfiguracion(clave: string): Promise<string | null> {
 }
 
 export async function setConfiguracion(clave: string, valor: string): Promise<void> {
-  const { error } = await supabase.from('configuracion').upsert({ clave, valor }, { onConflict: 'clave' })
-  if (error) throw error
+  const existente = await supabase
+    .from('configuracion')
+    .select('id')
+    .eq('clave', clave)
+    .maybeSingle()
+  if (existente.error) throw existente.error
+
+  if (existente.data) {
+    const { error } = await supabase
+      .from('configuracion')
+      .update({ valor })
+      .eq('id', existente.data.id)
+    if (error) throw error
+  } else {
+    const { error } = await supabase
+      .from('configuracion')
+      .insert({ clave, valor })
+    if (error) throw error
+  }
   notifyDataChanged()
 }
 

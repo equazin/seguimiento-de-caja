@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Trash2, Edit2, ChevronLeft, ChevronRight, ArrowUpDown, ArrowLeftRight } from 'lucide-react'
+import { Trash2, Edit2, ChevronLeft, ChevronRight, ArrowUpDown, ArrowLeftRight, Split } from 'lucide-react'
+import { extraerSplitId, limpiarNotaSplit } from '@/lib/vinculos'
 import { useMovimientos, eliminarMovimiento, eliminarMovimientosBulk } from '@/hooks/useMovimientos'
 import { useCategorias } from '@/hooks/useCategorias'
 import { useCuentas } from '@/hooks/useCuentas'
@@ -214,6 +215,7 @@ export function Movimientos({ onModalOpen, onEdit }: Props) {
                   const cuenta = cuentaMap.get(m.cuenta_id)
                   const metodo = metodosMap.get(m.metodo_pago)
                   const esIngreso = m.tipo === 'ingreso'
+                  const split = extraerSplitId(m.notas)
                   return (
                     <tr
                       key={m.id}
@@ -238,9 +240,23 @@ export function Movimientos({ onModalOpen, onEdit }: Props) {
                         </Badge>
                       </td>
                       <td className="px-4 py-3 max-w-xs">
-                        <p className="text-white truncate">{m.descripcion}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-white truncate">{m.descripcion}</p>
+                          {split && (
+                            <span
+                              className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary"
+                              title={`Pago dividido (${split.parte}/2)`}
+                            >
+                              <Split size={9} />
+                              {split.parte}/2
+                            </span>
+                          )}
+                        </div>
                         {m.subcategoria && (
                           <p className="text-xs text-muted-foreground truncate">{m.subcategoria}</p>
+                        )}
+                        {limpiarNotaSplit(m.notas) && split && (
+                          <p className="text-xs text-muted-foreground truncate italic">{limpiarNotaSplit(m.notas)}</p>
                         )}
                       </td>
                       <td className="px-4 py-3">
@@ -260,14 +276,24 @@ export function Movimientos({ onModalOpen, onEdit }: Props) {
                         {cuenta?.nombre ?? '—'}
                       </td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
-                        <span className={`font-semibold ${esIngreso ? 'text-success' : 'text-danger'}`}>
-                          {esIngreso ? formatMoney(m.monto_ars) : `-${formatMoney(m.monto_ars)}`}
-                        </span>
-                        {m.monto_usd && (
-                          <p className="text-xs text-muted-foreground">
-                            USD {m.monto_usd.toFixed(2)}
-                          </p>
-                        )}
+                        {(() => {
+                          const esUsd = m.moneda_principal === 'USD'
+                          const monto = esUsd ? Number(m.monto_usd ?? 0) : m.monto_ars
+                          const moneda: 'ARS' | 'USD' = esUsd ? 'USD' : 'ARS'
+                          const principal = esIngreso ? formatMoney(monto, moneda) : `-${formatMoney(monto, moneda)}`
+                          return (
+                            <>
+                              <span className={`font-semibold ${esIngreso ? 'text-success' : 'text-danger'}`}>
+                                {principal}
+                              </span>
+                              {!esUsd && m.monto_usd ? (
+                                <p className="text-xs text-muted-foreground">
+                                  USD {m.monto_usd.toFixed(2)}
+                                </p>
+                              ) : null}
+                            </>
+                          )
+                        })()}
                       </td>
                       <td className="px-4 py-3 text-center">
                         <RowActionsMenu
