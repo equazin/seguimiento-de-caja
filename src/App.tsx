@@ -6,6 +6,7 @@ import { Dashboard } from '@/pages/Dashboard'
 import { Movimientos } from '@/pages/Movimientos'
 import { Cuentas } from '@/pages/Cuentas'
 import { Echeqs } from '@/pages/Echeqs'
+import { Retiros } from '@/pages/Retiros'
 import { Reportes } from '@/pages/Reportes'
 import { Configuracion } from '@/pages/Configuracion'
 import { Ventas } from '@/pages/Ventas'
@@ -159,6 +160,7 @@ function AppShell() {
           />
           <Route path="/cuentas" element={<Cuentas />} />
           <Route path="/echeqs" element={<Echeqs />} />
+          <Route path="/retiros" element={<Retiros />} />
           <Route path="/ventas" element={<Ventas />} />
           <Route path="/ventas/nuevo" element={<DocumentoEditor tipoOperacion="venta" />} />
           <Route path="/ventas/:id/detalle" element={<DocumentoDetalle tipoOperacion="venta" />} />

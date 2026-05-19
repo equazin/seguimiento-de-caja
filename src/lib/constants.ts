@@ -11,6 +11,7 @@ export const CATEGORIAS_DEFAULT: Omit<Categoria, never>[] = [
   { id: 'cat-logistica', nombre: 'Logistica/Flete', tipo: 'egreso', color: '#f97316', icono: '\u{1F69A}' },
   { id: 'cat-impuestos', nombre: 'Impuestos/IIBB/Tasas', tipo: 'egreso', color: '#64748b', icono: '\u{1F3DB}\uFE0F' },
   { id: 'cat-retiro', nombre: 'Retiro personal/Dueno', tipo: 'egreso', color: '#a78bfa', icono: '\u{1F4B0}' },
+  { id: 'cat-vehiculos', nombre: 'Vehiculos', tipo: 'egreso', color: '#0ea5e9', icono: '\u{1F697}' },
   { id: 'cat-bancarios', nombre: 'Gastos bancarios', tipo: 'egreso', color: '#6366f1', icono: '\u{1F3E6}' },
   { id: 'cat-otros-egreso', nombre: 'Otros gastos', tipo: 'egreso', color: '#6b7280', icono: '\u{1F4CB}' },
   // Ingresos

@@ -12,6 +12,7 @@ import {
   Menu,
   Moon,
   Package,
+  PiggyBank,
   Receipt,
   Settings,
   ShoppingCart,
@@ -48,6 +49,7 @@ const NAV_ITEMS_BEFORE: NavItem[] = [
   { to: '/movimientos', label: 'Movimientos', icon: ArrowLeftRight },
   { to: '/cuentas', label: 'Cuentas', icon: Wallet },
   { to: '/echeqs', label: 'E-cheqs', icon: Receipt },
+  { to: '/retiros', label: 'Retiros', icon: PiggyBank },
 ]
 
 const NAV_ITEMS_AFTER: NavItem[] = [

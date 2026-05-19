@@ -1,5 +1,5 @@
 import { supabase } from '@/db/schema'
-import type { Cuenta } from '@/db/schema'
+import type { Cuenta, Movimiento } from '@/db/schema'
 import { getSaldoCuenta } from '@/db/queries'
 import { notifyDataChanged, useSupabaseQuery } from '@/hooks/useSupabaseQuery'
 import { v4 as uuidv4 } from 'uuid'
@@ -58,19 +58,22 @@ export async function transferirEntreCuentas(
   cuentaDestinoId: string,
   monto: number,
   descripcion: string,
-  fecha: string
+  fecha: string,
+  descuentoBancario: number = 0
 ) {
   const now = new Date().toISOString()
-  const { error } = await supabase.from('movimientos').insert([
+  const descripcionTransferencia = `Transferencia: ${descripcion}`
+  const esDepositoEcheq = descuentoBancario > 0
+  const movimientos: Movimiento[] = [
     {
       id: uuidv4(),
       fecha,
       tipo: 'egreso',
       monto_ars: monto,
       moneda_principal: 'ARS',
-      descripcion: `Transferencia: ${descripcion}`,
+      descripcion: descripcionTransferencia,
       categoria_id: 'cat-bancarios',
-      metodo_pago: 'transferencia',
+      metodo_pago: esDepositoEcheq ? 'cheque' : 'transferencia',
       cuenta_id: cuentaOrigenId,
       created_at: now,
       updated_at: now,
@@ -81,14 +84,32 @@ export async function transferirEntreCuentas(
       tipo: 'ingreso',
       monto_ars: monto,
       moneda_principal: 'ARS',
-      descripcion: `Transferencia: ${descripcion}`,
+      descripcion: descripcionTransferencia,
       categoria_id: 'cat-bancarios',
-      metodo_pago: 'transferencia',
+      metodo_pago: esDepositoEcheq ? 'cheque' : 'transferencia',
       cuenta_id: cuentaDestinoId,
       created_at: now,
       updated_at: now,
     },
-  ])
+  ]
+
+  if (esDepositoEcheq) {
+    movimientos.push({
+      id: uuidv4(),
+      fecha,
+      tipo: 'egreso',
+      monto_ars: descuentoBancario,
+      moneda_principal: 'ARS',
+      descripcion: `Impuestos/comisiones banco: ${descripcion}`,
+      categoria_id: 'cat-bancarios',
+      metodo_pago: 'cheque',
+      cuenta_id: cuentaDestinoId,
+      created_at: now,
+      updated_at: now,
+    })
+  }
+
+  const { error } = await supabase.from('movimientos').insert(movimientos)
   if (error) throw error
   notifyDataChanged()
 }

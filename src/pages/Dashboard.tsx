@@ -1,9 +1,9 @@
-import { Activity, AlertTriangle, ArrowDownToLine, ArrowUpFromLine, FileCheck2, ShieldCheck, TrendingDown, TrendingUp, Wallet, type LucideIcon } from 'lucide-react'
+import { Activity, AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Car, FileCheck2, PiggyBank, ShieldCheck, TrendingDown, TrendingUp, Wallet, type LucideIcon } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useDashboard } from '@/hooks/useDashboard'
 import { useCuentasConSaldo } from '@/hooks/useCuentas'
 import { useCategorias } from '@/hooks/useCategorias'
-import { useUltimosMovimientos } from '@/hooks/useMovimientos'
+import { useMovimientos, useUltimosMovimientos } from '@/hooks/useMovimientos'
 import { useProductos } from '@/hooks/useCatalogo'
 import { getTopPedidosPendientes } from '@/hooks/usePedidos'
 import { KPICard } from '@/components/dashboard/KPICard'
@@ -15,8 +15,17 @@ import { Badge } from '@/components/ui/Badge'
 import { SkeletonKPI } from '@/components/ui/Skeleton'
 import { useAuth } from '@/lib/auth'
 import { cn, formatMoney, getMesActual } from '@/lib/formatters'
+import {
+  esGastoVehiculo,
+  esRetiroPersonal,
+  estaEnRango,
+  getRangoSemana,
+  normalizarPersonaRetiro,
+  PERSONAS_RETIRO,
+  RETIRO_PERSONAL_TOPE_SEMANAL,
+} from '@/lib/retiros'
 import { ESTADO_COMPRA_CONFIG, ESTADO_VENTA_CONFIG } from '@/lib/vinculos'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Movimiento } from '@/db/schema'
 
 interface PedidoPendiente {
@@ -75,11 +84,29 @@ export function Dashboard({ onEditMovimiento }: Props) {
   const cuentas = useCuentasConSaldo()
   const categorias = useCategorias()
   const ultimos = useUltimosMovimientos(10)
+  const egresos = useMovimientos({ tipo: 'egreso' })
   const productos = useProductos({ soloActivos: true })
   const pedidosPendientes = usePedidosPendientes()
   const navigate = useNavigate()
   const { label: mesLabel } = getMesActual()
   const productosStockBajo = (productos ?? []).filter(p => p.stockeable && p.stock_actual <= p.stock_minimo)
+  const semana = useMemo(() => getRangoSemana(), [])
+  const resumenRetiros = useMemo(() => {
+    const movimientosSemana = (egresos ?? []).filter(m => estaEnRango(m, semana.inicioStr, semana.finStr))
+    const retiros = movimientosSemana.filter(esRetiroPersonal)
+    const vehiculos = movimientosSemana.filter(esGastoVehiculo)
+    const personas = PERSONAS_RETIRO.map(persona => {
+      const usado = retiros
+        .filter(m => normalizarPersonaRetiro(m.contacto) === persona)
+        .reduce((sum, m) => sum + m.monto_ars, 0)
+      return { persona, usado, restante: RETIRO_PERSONAL_TOPE_SEMANAL - usado }
+    })
+
+    return {
+      personas,
+      totalVehiculos: vehiculos.reduce((sum, m) => sum + m.monto_ars, 0),
+    }
+  }, [egresos, semana.inicioStr, semana.finStr])
 
   if (!data) {
     return (
@@ -200,6 +227,55 @@ export function Dashboard({ onEditMovimiento }: Props) {
           />
         </div>
       )}
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <button
+          type="button"
+          onClick={() => navigate('/retiros')}
+          className="rounded-xl border border-border bg-surface/90 p-4 text-left shadow-xl shadow-black/10 transition-colors hover:border-primary/40 hover:bg-surface-2"
+        >
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <PiggyBank size={17} className="text-primary" />
+              <h2 className="text-sm font-semibold text-white">Retiros personales</h2>
+            </div>
+            <span className="text-xs text-muted-foreground">Tope semanal</span>
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {resumenRetiros.personas.map(item => {
+              const excedido = item.usado > RETIRO_PERSONAL_TOPE_SEMANAL
+              return (
+                <div key={item.persona} className="rounded-lg border border-border bg-surface-2 px-3 py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-medium text-muted-foreground">{item.persona}</p>
+                    <span className={cn('text-xs font-semibold', excedido ? 'text-danger' : 'text-success')}>
+                      {excedido ? 'Excedido' : formatMoney(item.restante)}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-sm font-bold text-white">{formatMoney(item.usado)}</p>
+                </div>
+              )
+            })}
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => navigate('/retiros')}
+          className="rounded-xl border border-border bg-surface/90 p-4 text-left shadow-xl shadow-black/10 transition-colors hover:border-primary/40 hover:bg-surface-2"
+        >
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Car size={17} className="text-info" />
+              <h2 className="text-sm font-semibold text-white">Vehiculos</h2>
+            </div>
+            <span className="text-xs text-muted-foreground">Sin tope</span>
+          </div>
+          <p className="text-xs text-muted-foreground">Gastos esta semana</p>
+          <p className="mt-1 text-2xl font-bold text-white">{formatMoney(resumenRetiros.totalVehiculos)}</p>
+          <p className="mt-1 text-xs text-muted-foreground">Combustible, service, peajes y otros gastos separados.</p>
+        </button>
+      </div>
 
       {cuentas && cuentas.length > 0 && (
         <div className="rounded-xl border border-border bg-surface/90 p-4 shadow-xl shadow-black/10">

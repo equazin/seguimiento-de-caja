@@ -3,7 +3,7 @@ import { Dialog } from '@/components/ui/Dialog'
 import { Input, Select } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { transferirEntreCuentas } from '@/hooks/useCuentas'
-import { todayStr } from '@/lib/formatters'
+import { formatMoney, todayStr } from '@/lib/formatters'
 import { toast } from 'sonner'
 import type { Cuenta } from '@/db/schema'
 
@@ -17,9 +17,14 @@ export function TransferenciaModal({ open, onClose, cuentas }: Props) {
   const [origen, setOrigen] = useState('')
   const [destino, setDestino] = useState('')
   const [monto, setMonto] = useState('')
+  const [descuentoBancario, setDescuentoBancario] = useState('')
   const [descripcion, setDescripcion] = useState('')
   const [fecha, setFecha] = useState(todayStr())
   const [loading, setLoading] = useState(false)
+
+  const montoNum = Number(monto) || 0
+  const descuentoBancarioNum = Number(descuentoBancario) || 0
+  const montoNeto = Math.max(montoNum - descuentoBancarioNum, 0)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -31,17 +36,22 @@ export function TransferenciaModal({ open, onClose, cuentas }: Props) {
       toast.error('Las cuentas deben ser diferentes')
       return
     }
+    if (descuentoBancario && (descuentoBancarioNum < 0 || descuentoBancarioNum >= montoNum)) {
+      toast.error('El descuento bancario debe ser menor al monto del eCheq')
+      return
+    }
     setLoading(true)
     try {
       await transferirEntreCuentas(
         origen, destino,
-        Number(monto),
+        montoNum,
         descripcion || 'Transferencia entre cuentas',
-        fecha
+        fecha,
+        descuentoBancarioNum
       )
       toast.success('Transferencia registrada')
       onClose()
-      setMonto(''); setDescripcion(''); setOrigen(''); setDestino('')
+      setMonto(''); setDescuentoBancario(''); setDescripcion(''); setOrigen(''); setDestino('')
     } catch {
       toast.error('Error al registrar transferencia')
     } finally {
@@ -80,7 +90,7 @@ export function TransferenciaModal({ open, onClose, cuentas }: Props) {
           ))}
         </Select>
         <Input
-          label="Monto ARS"
+          label="Monto total del eCheq / transferencia"
           type="number"
           min="0"
           step="0.01"
@@ -89,6 +99,26 @@ export function TransferenciaModal({ open, onClose, cuentas }: Props) {
           onChange={e => setMonto(e.target.value)}
           required
         />
+        <Input
+          label="Impuestos/comisiones por deposito de eCheq"
+          type="number"
+          min="0"
+          step="0.01"
+          placeholder="0.00"
+          value={descuentoBancario}
+          onChange={e => setDescuentoBancario(e.target.value)}
+        />
+        {descuentoBancarioNum > 0 && montoNum > 0 && (
+          <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-muted-foreground">Neto que entra al banco</span>
+              <span className="font-semibold text-success">{formatMoney(montoNeto)}</span>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Se registra el eCheq por {formatMoney(montoNum)} y un gasto bancario por {formatMoney(descuentoBancarioNum)}.
+            </p>
+          </div>
+        )}
         <Input
           label="Descripción"
           placeholder="Motivo de la transferencia"
