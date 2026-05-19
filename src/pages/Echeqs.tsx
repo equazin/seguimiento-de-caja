@@ -66,6 +66,7 @@ export function Echeqs() {
   const [cobroDialog, setCobroDialog] = useState<{ echeq: Echeq; movimiento: Movimiento } | null>(null)
   const [cobroCuentaId, setCobroCuentaId] = useState('')
   const [cobroFecha, setCobroFecha] = useState(todayStr())
+  const [cobroDescuento, setCobroDescuento] = useState('')
   const [cobroLoading, setCobroLoading] = useState(false)
   const echeqs = useTodosLosEcheqs()
   const movimientos = useMovimientos()
@@ -124,6 +125,7 @@ export function Echeqs() {
     setCobroDialog({ echeq, movimiento: mov })
     setCobroCuentaId(echeq.cuenta_destino_id ?? '')
     setCobroFecha(todayStr())
+    setCobroDescuento('')
   }
 
   async function confirmarCobro() {
@@ -136,11 +138,17 @@ export function Echeqs() {
       toast.error('Indicá la fecha de cobro')
       return
     }
+    const descuento = cobroDescuento.trim() ? Number(cobroDescuento) : 0
+    if (!Number.isFinite(descuento) || descuento < 0 || descuento >= cobroDialog.echeq.monto) {
+      toast.error('El descuento bancario debe ser menor al monto del e-cheq')
+      return
+    }
     setCobroLoading(true)
     try {
-      await cobrarEcheq(cobroDialog.echeq, cobroCuentaId, cobroFecha, cobroDialog.movimiento)
+      await cobrarEcheq(cobroDialog.echeq, cobroCuentaId, cobroFecha, cobroDialog.movimiento, descuento)
       toast.success('E-cheq cobrado y transferido a la cuenta destino')
       setCobroDialog(null)
+      setCobroDescuento('')
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'No se pudo cobrar el e-cheq'
       toast.error(msg)
@@ -341,6 +349,9 @@ export function Echeqs() {
       >
         {cobroDialog && (() => {
           const monedaPadre: 'ARS' | 'USD' = 'ARS'
+          const descuento = cobroDescuento.trim() ? Number(cobroDescuento) : 0
+          const descuentoValido = Number.isFinite(descuento) && descuento > 0
+          const netoCobro = Math.max(cobroDialog.echeq.monto - (descuentoValido ? descuento : 0), 0)
           const cuentasDisponibles = (cuentas ?? []).filter(c =>
             c.moneda === 'ARS' &&
             c.id !== CUENTA_ECHEQS_ARS_ID
@@ -379,8 +390,30 @@ export function Echeqs() {
                 required
               />
 
+              <Input
+                label="Impuestos/comisiones bancarias"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                value={cobroDescuento}
+                onChange={e => setCobroDescuento(e.target.value)}
+              />
+
+              {descuentoValido && (
+                <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">Neto que entra al banco</span>
+                    <span className="font-semibold text-success">{formatMoney(netoCobro, monedaPadre)}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Se registrara el cobro completo y un gasto bancario por {formatMoney(descuento, monedaPadre)}.
+                  </p>
+                </div>
+              )}
+
               <p className="text-xs text-muted-foreground">
-                Se generarán 2 movimientos: uno saliendo de "E-cheqs en cartera" y otro entrando a la cuenta seleccionada.
+                Se generaran {descuentoValido ? 3 : 2} movimientos: uno saliendo de "E-cheqs en cartera", otro entrando a la cuenta seleccionada{descuentoValido ? ' y un gasto por impuestos/comisiones' : ''}.
               </p>
 
               <div className="flex justify-end gap-2 pt-2">

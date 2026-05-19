@@ -58,9 +58,10 @@ export async function actualizarEstadoEcheq(id: string, estado: EchequEstado): P
  * Marca un e-cheq como cobrado y genera la transferencia automática
  * desde la cuenta virtual "E-cheqs en cartera" hacia la cuenta destino real.
  *
- * Genera 2 movimientos:
+ * Genera 2 movimientos, o 3 si hay impuestos/comisiones bancarias:
  *  - Egreso en cuenta-echeqs-{ARS|USD}
  *  - Ingreso en cuenta destino
+ *  - Egreso en cuenta destino por impuestos/comisiones
  *
  * Si el echeq pertenece a un movimiento ingreso (cobro de cheque), el flujo es:
  *   echeqs-cartera -> cuenta real (entra plata real)
@@ -72,13 +73,19 @@ export async function cobrarEcheq(
   echeq: Echeq,
   cuentaDestinoId: string,
   fechaCobro: string,
-  movimientoPadre: Movimiento
+  movimientoPadre: Movimiento,
+  descuentoBancario: number = 0
 ): Promise<void> {
   const moneda: 'ARS' | 'USD' = 'ARS'
   const cuentaVirtual = cuentaEcheqsId()
   const now = new Date().toISOString()
   const esIngreso = movimientoPadre.tipo === 'ingreso'
   const monto = echeq.monto
+  const descuento = Number.isFinite(descuentoBancario) ? descuentoBancario : 0
+
+  if (descuento < 0 || descuento >= monto) {
+    throw new Error('El descuento bancario debe ser menor al monto del e-cheq')
+  }
 
   const descripcion = `Cobro e-cheq ${echeq.numero ? `#${echeq.numero}` : ''} - ${echeq.librador}`.trim()
 
@@ -112,7 +119,29 @@ export async function cobrarEcheq(
     cuenta_id: cuentaDestinoId,
   }
 
-  const inserts = await supabase.from('movimientos').insert([movimientoVirtual, movimientoReal])
+  const movimientos: Movimiento[] = [movimientoVirtual, movimientoReal]
+
+  if (esIngreso && descuento > 0) {
+    movimientos.push({
+      id: uuidv4(),
+      fecha: fechaCobro,
+      tipo: 'egreso' as const,
+      monto_ars: descuento,
+      monto_usd: null,
+      moneda_principal: moneda,
+      categoria_id: 'cat-bancarios',
+      subcategoria: 'Impuestos e-cheq',
+      descripcion: `Impuestos/comisiones ${descripcion}`,
+      contacto: movimientoPadre.contacto,
+      metodo_pago: 'echeq' as const,
+      cuenta_id: cuentaDestinoId,
+      notas: `[cobro_echeq:${echeq.id}][impuestos:${descuento}]`,
+      created_at: now,
+      updated_at: now,
+    })
+  }
+
+  const inserts = await supabase.from('movimientos').insert(movimientos)
   if (inserts.error) throw inserts.error
 
   const updateEcheq = await supabase
