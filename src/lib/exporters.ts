@@ -1,5 +1,6 @@
 import type { Movimiento, Categoria, Cuenta } from '@/db/schema'
 import { formatDate, formatMoney } from './formatters'
+import { resumirMovimientosResultado } from './movimientos'
 
 export async function exportToExcel(
   movimientos: Movimiento[],
@@ -11,8 +12,9 @@ export async function exportToExcel(
 
   const catMap = new Map(categorias.map(c => [c.id, c.nombre]))
   const cuentaMap = new Map(cuentas.map(c => [c.id, c.nombre]))
+  const resumen = resumirMovimientosResultado(movimientos)
 
-  const rows = movimientos.map(m => ({
+  const rows = resumen.movimientos.map(m => ({
     Fecha: formatDate(m.fecha),
     Tipo: m.tipo === 'ingreso' ? 'Ingreso' : 'Egreso',
     Descripción: m.descripcion,
@@ -31,7 +33,7 @@ export async function exportToExcel(
     Tipo: '',
     Descripción: '',
     Categoría: '',
-    'Monto ARS': movimientos.reduce((s, m) => s + (m.tipo === 'ingreso' ? m.monto_ars : -m.monto_ars), 0),
+    'Monto ARS': resumen.resultado,
     'Monto USD': '',
     'Tipo de cambio': '',
     Contacto: '',
@@ -68,6 +70,7 @@ export async function exportToPDF(
 
   const catMap = new Map(categorias.map(c => [c.id, c.nombre]))
   const cuentaMap = new Map(cuentas.map(c => [c.id, c.nombre]))
+  const resumen = resumirMovimientosResultado(movimientos)
 
   const doc = new jsPDF({ orientation: 'landscape' })
 
@@ -94,20 +97,16 @@ export async function exportToPDF(
   }
 
   // Resumen
-  const ingresos = movimientos.filter(m => m.tipo === 'ingreso').reduce((s, m) => s + m.monto_ars, 0)
-  const egresos = movimientos.filter(m => m.tipo === 'egreso').reduce((s, m) => s + m.monto_ars, 0)
-  const resultado = ingresos - egresos
-
   doc.setTextColor(30, 30, 30)
   doc.setFontSize(10)
-  doc.text(`Ingresos: ${formatMoney(ingresos)}`, 14, 38)
-  doc.text(`Egresos: ${formatMoney(egresos)}`, 80, 38)
-  doc.text(`Resultado neto: ${formatMoney(resultado)}`, 160, 38)
+  doc.text(`Ingresos: ${formatMoney(resumen.ingresos)}`, 14, 38)
+  doc.text(`Egresos: ${formatMoney(resumen.egresos)}`, 80, 38)
+  doc.text(`Resultado neto: ${formatMoney(resumen.resultado)}`, 160, 38)
 
   autoTable(doc, {
     startY: 45,
     head: [['Fecha', 'Tipo', 'Descripción', 'Categoría', 'Monto ARS', 'Contacto', 'Método', 'Cuenta']],
-    body: movimientos.map(m => [
+    body: resumen.movimientos.map(m => [
       formatDate(m.fecha),
       m.tipo === 'ingreso' ? 'Ingreso' : 'Egreso',
       m.descripcion,

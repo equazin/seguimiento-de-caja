@@ -1,6 +1,12 @@
 import { supabase } from './supabase'
 import type { Categoria, Configuracion, Cuenta, Movimiento } from './supabase'
 import { notifyDataChanged } from '@/hooks/useSupabaseQuery'
+import {
+  esCuentaVirtualEcheq,
+  esMovimientoDeResultado,
+  resumirMovimientosResultado,
+  valorMovimientoArs,
+} from '@/lib/movimientos'
 
 async function clearAllTables() {
   const movimientos = await supabase.from('movimientos').delete().not('id', 'is', null)
@@ -17,6 +23,11 @@ async function clearAllTables() {
 }
 
 export async function getSaldoCuenta(cuentaId: string): Promise<number> {
+  if (esCuentaVirtualEcheq(cuentaId)) {
+    const cartera = await getEcheqsEnCartera()
+    return cartera.ingresosArs - cartera.egresosArs
+  }
+
   const { data: cuenta } = await supabase
     .from('cuentas')
     .select('saldo_inicial, moneda')
@@ -41,12 +52,10 @@ export async function getSaldoCuenta(cuentaId: string): Promise<number> {
   return cuenta.saldo_inicial + totalIngresos - totalEgresos
 }
 
-const CUENTAS_VIRTUALES_IDS = ['cuenta-echeqs-ars']
-
 export async function getSaldoTotalARS(): Promise<number> {
   const { data: cuentas } = await supabase.from('cuentas').select('id, moneda').eq('activa', true)
   if (!cuentas) return 0
-  const cuentasArs = cuentas.filter(c => c.moneda === 'ARS' && !CUENTAS_VIRTUALES_IDS.includes(c.id))
+  const cuentasArs = cuentas.filter(c => c.moneda === 'ARS' && !esCuentaVirtualEcheq(c.id))
   const saldos = await Promise.all(cuentasArs.map(c => getSaldoCuenta(c.id)))
   return saldos.reduce((s, v) => s + v, 0)
 }
@@ -54,7 +63,7 @@ export async function getSaldoTotalARS(): Promise<number> {
 export async function getSaldoTotalUSD(): Promise<number> {
   const { data: cuentas } = await supabase.from('cuentas').select('id, moneda').eq('activa', true)
   if (!cuentas) return 0
-  const cuentasUsd = cuentas.filter(c => c.moneda === 'USD' && !CUENTAS_VIRTUALES_IDS.includes(c.id))
+  const cuentasUsd = cuentas.filter(c => c.moneda === 'USD' && !esCuentaVirtualEcheq(c.id))
   const saldos = await Promise.all(cuentasUsd.map(c => getSaldoCuenta(c.id)))
   return saldos.reduce((s, v) => s + v, 0)
 }
@@ -141,10 +150,7 @@ export async function getMovimientosByMes(anio: number, mes: number): Promise<Mo
 
 export async function getResumenMensual(anio: number, mes: number) {
   const movimientos = await getMovimientosByMes(anio, mes)
-  const arsOnly = movimientos.filter(m => (m.moneda_principal ?? 'ARS') === 'ARS')
-  const ingresos = arsOnly.filter(m => m.tipo === 'ingreso').reduce((s, m) => s + m.monto_ars, 0)
-  const egresos = arsOnly.filter(m => m.tipo === 'egreso').reduce((s, m) => s + m.monto_ars, 0)
-  return { ingresos, egresos, resultado: ingresos - egresos, movimientos }
+  return { ...resumirMovimientosResultado(movimientos), movimientos }
 }
 
 export async function getEgresosPorCategoria(anio: number, mes: number) {
@@ -153,7 +159,7 @@ export async function getEgresosPorCategoria(anio: number, mes: number) {
 
   const mapa = new Map<string, number>()
   movimientos
-    .filter(m => m.tipo === 'egreso' && (m.moneda_principal ?? 'ARS') === 'ARS')
+    .filter(m => m.tipo === 'egreso' && (m.moneda_principal ?? 'ARS') === 'ARS' && esMovimientoDeResultado(m))
     .forEach(m => {
       if (!m.categoria_id) return
       mapa.set(m.categoria_id, (mapa.get(m.categoria_id) ?? 0) + m.monto_ars)
@@ -280,7 +286,7 @@ export async function getSaldoAcumuladoUltimos30Dias() {
 
   const { data: todos } = await supabase
     .from('movimientos')
-    .select('fecha, tipo, monto_ars, moneda_principal')
+    .select('fecha, tipo, monto_ars, moneda_principal, cuenta_id')
   const arsOnly = (todos ?? []).filter(m => (m.moneda_principal ?? 'ARS') === 'ARS')
   const saldoTotal = await getSaldoTotalARS()
 
@@ -291,9 +297,9 @@ export async function getSaldoAcumuladoUltimos30Dias() {
     const fecha = new Date(hoy)
     fecha.setDate(fecha.getDate() - i)
     const fechaStr = fecha.toISOString().split('T')[0]
-    const del_dia = arsOnly.filter(m => m.fecha === fechaStr)
-    const ing = del_dia.filter(m => m.tipo === 'ingreso').reduce((s, m) => s + m.monto_ars, 0)
-    const egr = del_dia.filter(m => m.tipo === 'egreso').reduce((s, m) => s + m.monto_ars, 0)
+    const del_dia = arsOnly.filter(m => m.fecha === fechaStr && !esCuentaVirtualEcheq(m.cuenta_id))
+    const ing = del_dia.filter(m => m.tipo === 'ingreso').reduce((s, m) => s + valorMovimientoArs(m), 0)
+    const egr = del_dia.filter(m => m.tipo === 'egreso').reduce((s, m) => s + valorMovimientoArs(m), 0)
     if (i === 30) saldoAcum = saldoTotal - ing + egr
     else saldoAcum = saldoAcum + ing - egr
     resultado.push({

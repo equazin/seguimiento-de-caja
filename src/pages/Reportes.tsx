@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { exportToExcel, exportToPDF } from '@/lib/exporters'
 import { formatMoney, formatDate, getPrimerDiaMes, getUltimoDiaMes } from '@/lib/formatters'
+import { esMovimientoDeResultado, resumirMovimientosResultado } from '@/lib/movimientos'
 import { toast } from 'sonner'
 import type { Cliente, Documento, DocumentoItem, Producto } from '@/db/schema'
 
@@ -60,14 +61,14 @@ export function Reportes() {
   const catMap = useMemo(() => new Map((categorias ?? []).map(c => [c.id, c])), [categorias])
   const clientesMap = useMemo(() => new Map((clientes ?? []).map(c => [c.id, c])), [clientes])
   const productosMap = useMemo(() => new Map((productos ?? []).map(p => [p.id, p])), [productos])
+  const movimientosReporte = useMemo(() => movimientos?.filter(esMovimientoDeResultado) ?? null, [movimientos])
 
   const resumen = useMemo(() => {
     if (!movimientos) return null
-    const ingresos = movimientos.filter(m => m.tipo === 'ingreso').reduce((s, m) => s + m.monto_ars, 0)
-    const egresos = movimientos.filter(m => m.tipo === 'egreso').reduce((s, m) => s + m.monto_ars, 0)
+    const base = resumirMovimientosResultado(movimientos)
 
     const porCategoria = new Map<string, { nombre: string; color: string; icono: string; total: number; cantidad: number }>()
-    movimientos.forEach(m => {
+    base.movimientos.forEach(m => {
       const cat = catMap.get(m.categoria_id)
       if (!cat) return
       const prev = porCategoria.get(m.categoria_id) ?? { nombre: cat.nombre, color: cat.color, icono: cat.icono, total: 0, cantidad: 0 }
@@ -79,10 +80,11 @@ export function Reportes() {
     })
 
     return {
-      ingresos,
-      egresos,
-      resultado: ingresos - egresos,
-      total: movimientos.length,
+      ingresos: base.ingresos,
+      egresos: base.egresos,
+      resultado: base.resultado,
+      total: base.movimientos.length,
+      internos: base.internos,
       porCategoria: [...porCategoria.values()].sort((a, b) => b.total - a.total),
     }
   }, [movimientos, catMap])
@@ -107,10 +109,10 @@ export function Reportes() {
   const periodo = `${formatDate(fechaDesde)} al ${formatDate(fechaHasta)}`
 
   const handleExcelExport = async () => {
-    if (!movimientos || !categorias || !cuentas) return
+    if (!movimientosReporte || !categorias || !cuentas) return
     setExporting(true)
     try {
-      await exportToExcel(movimientos, categorias, cuentas, titulo)
+      await exportToExcel(movimientosReporte, categorias, cuentas, titulo)
       toast.success('Excel generado')
     } catch {
       toast.error('Error al exportar Excel')
@@ -120,10 +122,10 @@ export function Reportes() {
   }
 
   const handlePDFExport = async () => {
-    if (!movimientos || !categorias || !cuentas) return
+    if (!movimientosReporte || !categorias || !cuentas) return
     setExporting(true)
     try {
-      await exportToPDF(movimientos, categorias, cuentas, 'Reporte de movimientos', periodo)
+      await exportToPDF(movimientosReporte, categorias, cuentas, 'Reporte de movimientos', periodo)
       toast.success('PDF generado')
     } catch {
       toast.error('Error al exportar PDF')
@@ -176,7 +178,7 @@ export function Reportes() {
               size="sm"
               onClick={handleExcelExport}
               loading={exporting}
-              disabled={!movimientos?.length}
+              disabled={!movimientosReporte?.length}
             >
               <FileSpreadsheet size={14} /> Exportar Excel
             </Button>
@@ -184,7 +186,7 @@ export function Reportes() {
               size="sm"
               onClick={handlePDFExport}
               loading={exporting}
-              disabled={!movimientos?.length}
+              disabled={!movimientosReporte?.length}
             >
               <FileText size={14} /> Exportar PDF
             </Button>
@@ -260,7 +262,9 @@ export function Reportes() {
       <Card>
         <CardHeader>
           <CardTitle>Movimientos del período</CardTitle>
-          <span className="text-xs text-muted-foreground">{movimientos?.length ?? 0} registros</span>
+          <span className="text-xs text-muted-foreground">
+            {resumen?.total ?? 0} registros{resumen?.internos ? `, ${resumen.internos} internos omitidos` : ''}
+          </span>
         </CardHeader>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -275,13 +279,13 @@ export function Reportes() {
               </tr>
             </thead>
             <tbody>
-              {!movimientos && (
+              {!movimientosReporte && (
                 <tr><td colSpan={6} className="text-center py-8 text-muted-foreground">Cargando...</td></tr>
               )}
-              {movimientos?.length === 0 && (
+              {movimientosReporte?.length === 0 && (
                 <tr><td colSpan={6} className="text-center py-8 text-muted-foreground">Sin movimientos en el período</td></tr>
               )}
-              {movimientos?.map((m, i) => {
+              {movimientosReporte?.map((m, i) => {
                 const cat = catMap.get(m.categoria_id)
                 const esIngreso = m.tipo === 'ingreso'
                 return (
@@ -307,7 +311,7 @@ export function Reportes() {
                 )
               })}
             </tbody>
-            {resumen && movimientos && movimientos.length > 0 && (
+            {resumen && movimientosReporte && movimientosReporte.length > 0 && (
               <tfoot>
                 <tr className="border-t-2 border-border">
                   <td colSpan={5} className="px-3 py-3 text-sm font-bold text-white text-right">Total neto:</td>
